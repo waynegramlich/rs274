@@ -51,7 +51,7 @@ class CommentToken:
 
 class Command:
     """Forward definition of Command class."""
-    
+
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
@@ -72,7 +72,7 @@ class LetterToken:
 
 class RS274:
     """Forward definition of RS274 class."""
-    
+
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
@@ -86,14 +86,14 @@ class OLetterToken:
 
 class Template:
     """Forward definition of Template class."""
-    
+
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
 
 class Token:
     """Forward definition of Token class."""
-    
+
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
@@ -315,15 +315,17 @@ class RS274:
         """Initialize the RS274 object."""
         # Load some values into *rs274* (i.e. *self*):
         rs274 = self
-        rs274.templates_table = dict()    # Command name (e.g. "G0") to *Template*.
+        rs274.comment_group = None        # *Group* for comments (e.g. "( ... )")
         rs274.group_table = dict()        # Command name (e.g. "G0") to associated *Group*"
         rs274.groups_list = list()        # *Group*'s list in execution order
         rs274.groups_list_keyed = False   # *True* if all groups assigned a sort key
         rs274.groups_table = dict()       # *Group*'s table keyed with short name
-        rs274.parameter_letters = dict()  # For testing, collect all template parameters.
-        rs274.variables = dict()          # Unclear if this is needed....
+        rs274.line_number_group = None    # *Group* for N codes.
         rs274.motion_command_name = None  # Name of last motion command (or *None*)
         rs274.motion_group = None         # The motion *Group* is special
+        rs274.parameter_letters = dict()  # For testing, collect all template parameters.
+        rs274.templates_table = dict()    # Command name (e.g. "G0") to *Template*.
+        rs274.variables = dict()          # Unclear if this is needed....
         rs274.white_space = " \t"         # White space characters for tokenizing
         rs274.token_match_routines = (    # The ordered token match routines
             OLetterToken.match,
@@ -350,8 +352,8 @@ class RS274:
             rs274.groups_list_keyed = True
 
     # RS274:commands_and_unused_tokens_extract():
-    def commands_and_unused_tokens_extract(self: RS274,
-                                           tokens: List[Token],
+    @staticmethod
+    def commands_and_unused_tokens_extract(tokens: List[Token],
                                            tracing: NullStr = None) -> (List[Command],
                                                                         List[Error],
                                                                         List[Token]):
@@ -441,24 +443,24 @@ class RS274:
         # Tack any *extraction_errors* onto *errors*:
         rs274: RS274 = self
         commands, unused_tokens = \
-            rs274.commands_and_unused_tokens_extract(tokens, tracing=next_tracing)
+            RS274.commands_and_unused_tokens_extract(tokens, tracing=next_tracing)
 
         # Fill up *unused_tokens_table* with each *unused_token* appending any *duplication_errors*
         # onto *errors*:
         errors: List[str] = list()
-        unused_tokens_table, duplication_errors = rs274.table_from_tokens(unused_tokens)
+        unused_tokens_table, duplication_errors = RS274.table_from_tokens(unused_tokens)
         errors.extend(duplication_errors)
 
         # Flag when two or more *commands* are in the same group:
-        conflict_errors, motion_command_name = rs274.group_conflicts_detect(commands)
+        conflict_errors, motion_command_name = RS274.group_conflicts_detect(commands)
         errors.extend(conflict_errors)
 
         # Determine which *commands* want to use which *unused_tokens* using *unused_tokens_table*
         # and *letter_commands_table*.  The updated (and hopefully empty) *unused_tokens* list
         # is returned:
         letter_commands_table: Dict[str, List[Command]] = \
-          rs274.letter_commands_table_create(unused_tokens_table, commands, tracing=next_tracing)
-        unused_tokens, bind_errors = rs274.tokens_bind_to_commands(letter_commands_table,
+          RS274.letter_commands_table_create(unused_tokens_table, commands, tracing=next_tracing)
+        unused_tokens, bind_errors = RS274.tokens_bind_to_commands(letter_commands_table,
                                                                    unused_tokens_table,
                                                                    tracing=next_tracing)
         errors.extend(bind_errors)
@@ -485,7 +487,8 @@ class RS274:
         return commands, errors, unused_tokens, motion_command_name
 
     # RS274.content_parse():
-    def content_parse(self: RS274, content: str, tracing: NullStr = None) -> List[Command]:
+    @staticmethod
+    def content_parse(content: str, tracing: NullStr = None) -> List[Command]:
         """Parse an RS274 content and return resulting Command's.
 
         Arguments:
@@ -543,7 +546,8 @@ class RS274:
         return flattened_commands
 
     # RS274.commands_write():
-    def commands_write(self: RS274, commands: List[Command], file_name: str):
+    @staticmethod
+    def commands_write(commands: List[Command], file_name: str):
         """Write commands to a file.
 
         Arguments:
@@ -561,7 +565,8 @@ class RS274:
                 out_file.write(f"{command}\n")
 
     # RS274.drill_cycles_replace():
-    def drill_cycles_replace(self: RS274, commands: List[Command]):
+    @staticmethod
+    def drill_cycles_replace(commands: List[Command]):
         """Replace G8* canned cycles with G0/G1 commands.
 
         Arguments:
@@ -698,7 +703,8 @@ class RS274:
         return updated_commands
 
     # RS274.g28_remove():
-    def g28_remove(self, commands: List[Command]):
+    @staticmethod
+    def g28_remove(commands: List[Command]):
         """Remove G28 commands from a list of Command's.
 
         Arguments:
@@ -714,7 +720,8 @@ class RS274:
         return [command for command in commands if command.Name not in ("G28", "G28.1")]
 
     # RS274.g91_remove():
-    def g91_remove(self, commands: List[Command]):
+    @staticmethod
+    def g91_remove(commands: List[Command]):
         """Remove G91 commands from a list of Command's.
 
         Arguments:
@@ -730,7 +737,8 @@ class RS274:
         return [command for command in commands if command.Name not in ("G91",)]
 
     # RS274.group_conflicts_detect()
-    def group_conflicts_detect(self, commands: List[Command]) -> (List[Error], str):
+    @staticmethod
+    def group_conflicts_detect(commands: List[Command]) -> (List[Error], str):
         """Detect group conflicts in a list of Command's.
 
         Arguments:
@@ -1043,7 +1051,8 @@ class RS274:
         stopping_group.m_code("M60", "", "Program Change Pallet Pause")
 
     # RS274.group_show():
-    def groups_show(self: RS274, groups: List[Group], label: str):
+    @staticmethod
+    def groups_show(groups: List[Group], label: str):
         """Print out a labled list of Group's for debugging."""
         assert isinstance(groups, list)
         assert isinstance(label, str)
@@ -1053,8 +1062,8 @@ class RS274:
             print("[{0}]:{1}".format(index, [code.key for code in group.codes]))
 
     # RS274.letter_commands_table_create():
-    def letter_commands_table_create(self: RS274,
-                                     unused_tokens_table: Dict[str, LetterToken],
+    @staticmethod
+    def letter_commands_table_create(unused_tokens_table: Dict[str, LetterToken],
                                      commands: List[Command],
                                      tracing: NullStr = None) -> Dict[str, List[Command]]:
         """Return a table used for token to command binding.
@@ -1091,6 +1100,7 @@ class RS274:
         for letter_index, letter in enumerate(unused_tokens_table.keys()):
             # Perform any requested *tracing*:
             assert isinstance(letter, str)
+            assert isinstance(letter_index, int)
             # if tracing is not None:
             #     print(f"{tracing}Letter[{letter_index}]:'{letter}'")
 
@@ -1099,6 +1109,7 @@ class RS274:
             for command_index, command in enumerate(commands):
                 # Unpack *command*:
                 assert isinstance(command, Command)
+                assert isinstance(command_index, int)
                 name = command.Name
                 # if tracing is not None:
                 #     print(f"{tracing} Command[{command_index}]:{command}")
@@ -1111,6 +1122,7 @@ class RS274:
 
                     # Register *command* is needing *template_letter* from *template*:
                     for template_index, template_letter in enumerate(template.parameters.keys()):
+                        assert isinstance(template_index, int)
                         # if tracing is not None:
                         #     print(f"{tracing}   TemplateL[{template_index}]:'{template_letter}'")
                         if letter == template_letter:
@@ -1136,7 +1148,7 @@ class RS274:
 
     # RS274:line_parse():
     def line_parse(self: RS274, line: str,
-                    tracing: NullStr = None) -> (List[Command], List[Error]):
+                   tracing: NullStr = None) -> (List[Command], List[Error]):
         """Parse one line of CNC code into a list of commands.
 
         Args:
@@ -1159,7 +1171,7 @@ class RS274:
         # Perform any requested *tracing*:
         next_tracing: NullStr = None if tracing is None else tracing + " "
         if tracing is not None:
-            print(f"{tracing}=>RS274.line_parse('{block}', *)")
+            print(f"{tracing}=>RS274.line_parse('{line}', *)")
 
         # Start with *final_codes* set to *None*.  Only override *final_commands* with a list
         # of *Command*'s if there are no errors and no unused tokens:
@@ -1275,7 +1287,7 @@ class RS274:
         # Wrap up any requested *tracing* and return *final_commands*:
         if tracing is not None:
             final_commands_text = RS274.commands_to_text(final_commands)
-            print(f"{tracing}<=RS274.line_parse('{block}', *)=>{final_commands_text}")
+            print(f"{tracing}<=RS274.line_parse('{line}', *)=>{final_commands_text}")
         return final_commands, errors
 
     # RS274:line_tokenize():
@@ -1330,7 +1342,8 @@ class RS274:
         return tokens, errors
 
     # RS274.n_remove():
-    def n_remove(self: RS274, commands: List[Command]) -> List[Command]:
+    @staticmethod
+    def n_remove(commands: List[Command]) -> List[Command]:
         """Return a copy of commands with N codes removed."""
         # Verify arguments:
         assert isinstance(commands, list)
@@ -1338,7 +1351,8 @@ class RS274:
         return [command for command in commands if command.Name[0] != 'N']
 
     # RS274.table_from_tokens():
-    def table_from_tokens(self: RS274, tokens: List[Token]) -> (Dict[str, Token], List[Error]):
+    @staticmethod
+    def table_from_tokens(tokens: List[Token]) -> (Dict[str, Token], List[Error]):
         """Convert tokens into a dict with list duplicate errors list.
 
         Arguments:
@@ -1381,8 +1395,8 @@ class RS274:
         OLetterToken.test()
 
     # RS274.tokens_bind_to_commands():
-    def tokens_bind_to_commands(self: RS274,
-                                letter_commands_table: Dict[str, List[Command]],
+    @staticmethod
+    def tokens_bind_to_commands(letter_commands_table: Dict[str, List[Command]],
                                 unused_tokens_table: Dict[str, Token],
                                 tracing: NullStr = None) -> (List[Token], List[Error]):
         """Merge unused tokens into pending commands.
@@ -1494,16 +1508,16 @@ class Template:
         """Return a string representation of a Template."""
         # Grab some values from *template* (i.e. *self*):
         template: Template = self
-        name: str = template.Name
-        parameters: Dict[str, Number] = template.Parameters
+        name: str = template.name
+        parameters: Dict[str, Number] = template.parameters
+        title: str = template.title
 
         # Create a sorted list of *parameters_strings*:
-        parameter_letters = list(parameters.keys())
-        parameter_letters.sort()
-        parameter_letters_text = "".join(parameter_letters)
+        parameters_letters = list(parameters.keys())
+        parameters_letters.sort()
 
         # Generate and return the final *result*:
-        parameters_text: str = ' '.join(parameters_strings)
+        parameters_letters_text = "".join(parameters_letters)
         result: str = f"{name} '{parameters_letters_text}' '{title}'"
         return result
 
@@ -1573,7 +1587,7 @@ class BracketToken(Token):
         """
         # Verify argument types:
         assert isinstance(end_index, int) and end_index >= 0
-        assert isinstance(value, int) or isinstance(value, float)
+        assert isinstance(value, (int, float))
         assert isinstance(tracing, str) or tracing is None
 
         # Perform an requested *tracing*:
@@ -1945,7 +1959,7 @@ class LetterToken(Token):
         assert isinstance(end_index, int) and end_index >= 0
         assert (isinstance(letter, str) and
                 len(letter) == 1 and letter.isalpha() and letter.isupper())
-        assert isinstance(number, float) or isinstance(number, int)
+        assert isinstance(number, (float, int))
 
         # Preform any requested *tracing*:
         next_tracing = None if tracing is None else tracing + " "
@@ -2156,7 +2170,7 @@ class LetterToken(Token):
         """
         # Verify argument types:
         assert isinstance(line, str)
-        assert isinstance(number, float) or isinstance(number, int)
+        assert isinstance(number, (float, int))
 
         # Tack some different termiators on the line:
         terminators = ("", " ", "(", ")", "x")
@@ -2179,7 +2193,7 @@ class OLetterToken(Token):
                  end_index: int,
                  routine_number: int,
                  keyword: str,
-                 tracing: NullStr=None):
+                 tracing: NullStr = None):
         """Initialize an OLetterToken.
 
         Arguments:
@@ -2187,6 +2201,8 @@ class OLetterToken(Token):
             routine_number (int): The routine number.
             keyword (str): The keyword is one of "call", "sub",
                 or "endsub".
+            tracing (NullStr): None for no tracing; otherwise
+                the string to prefix to tracing output.
 
         """
         # Verify argument types:
@@ -2355,11 +2371,11 @@ if __name__ == "__main__":
         print("file_name='{0}'".format(file_name))
         with open(file_name, "r") as in_file:
             content = in_file.read()
-            commands = rs274.content_parse(content)
-            commands = rs274.n_remove(commands)
-            commands = rs274.g28_remove(commands)
-            commands = rs274.g91_remove(commands)
-            commands = rs274.drill_cycles_replace(commands)
+            commands = RS274.content_parse(content)
+            commands = RS274.n_remove(commands)
+            commands = RS274.g28_remove(commands)
+            commands = RS274.g91_remove(commands)
+            commands = RS274.drill_cycles_replace(commands)
             rs274.commands_write(commands, os.path.join("/tmp", file_name))
             #commands = rs274.g83.replace(commands)
             # for command_index, command in enumerate(commands):
