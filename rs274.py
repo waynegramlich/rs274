@@ -4,8 +4,9 @@
 import sys
 import math
 import os
-from typing import Callable, Dict, List, Tuple, Union
 
+# Import some types for Type hints:
+from typing import Callable, Dict, List, Tuple, Union
 Number = Union[float, int]
 NullStr = Union[None, str]
 Error = str
@@ -25,7 +26,6 @@ Error = str
 # * Add re-blocker code.
 #
 # Documentation, Linting:
-# * Look into pychecker.
 # * Run everything through flake8, pylint, and some sort of doc string checker.
 # * Add type annotation via PEP484, PEP3107.
 # * https://aboutsimon.com/blog/2018/04/04/
@@ -33,6 +33,7 @@ Error = str
 # * https://medium.com/@ageitgey/
 #      learn-how-to-use-static-type-checking-in-python-3-6-in-10-minutes-12c86d72677b
 # * http://google.github.io/styleguide/pyguide.html
+
 
 # Forward class declartions that will be overridden further below:
 class BracketToken:
@@ -42,12 +43,14 @@ class BracketToken:
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
 
+
 class CommentToken:
     """Forward definition of CommentToken class."""
 
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
+
 
 class Command:
     """Forward definition of Command class."""
@@ -56,12 +59,14 @@ class Command:
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
 
+
 class Group:
     """Forward definition of Group class."""
 
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
+
 
 class LetterToken:
     """Forward definition of LetterToken class."""
@@ -70,12 +75,14 @@ class LetterToken:
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
 
+
 class RS274:
     """Forward definition of RS274 class."""
 
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
+
 
 class OLetterToken:
     """Forward definition of OLetterToken class."""
@@ -84,6 +91,7 @@ class OLetterToken:
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
 
+
 class Template:
     """Forward definition of Template class."""
 
@@ -91,12 +99,14 @@ class Template:
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
 
+
 class Token:
     """Forward definition of Token class."""
 
     def __init__(self):
         """Bogus __init__ method."""
         assert False, "Forward class definition accidentally used."
+
 
 # Command:
 class Command:
@@ -458,8 +468,8 @@ class RS274:
         # Determine which *commands* want to use which *unused_tokens* using *unused_tokens_table*
         # and *letter_commands_table*.  The updated (and hopefully empty) *unused_tokens* list
         # is returned:
-        letter_commands_table: Dict[str, List[Command]] = \
-          RS274.letter_commands_table_create(unused_tokens_table, commands, tracing=next_tracing)
+        letter_commands_table: Dict[str, List[Command]] = (
+          RS274.letter_commands_table_create(unused_tokens_table, commands, tracing=next_tracing))
         unused_tokens, bind_errors = RS274.tokens_bind_to_commands(letter_commands_table,
                                                                    unused_tokens_table,
                                                                    tracing=next_tracing)
@@ -606,7 +616,7 @@ class RS274:
             #     updated_commands.append(command)
             elif name in ("G82", "G83"):
                 # Extract the needed values from *parameters* and *varibles*:
-                #l = parameters['L'] if 'L' in parameters else (
+                # l = parameters['L'] if 'L' in parameters else (
                 #    variables['L'] if 'L' in variables else None)
                 p = parameters['P'] if 'P' in parameters else (
                     variables['P'] if 'P' in parameters else None)
@@ -685,10 +695,6 @@ class RS274:
                 else:
                     updated_commands.append(Command(f"( {name} drill operation suppressed because"
                                                     f" Z:{z_depth} < R:{r} <= Zini:{z} false )"))
-                    #variables['Z'] = z
-                    #variables['Zdepth'] = z - 0.001
-
-                #updated_commands.append(command)
             elif False and name in ("G0", "G43", "F18.0"):
                 x = parameters['X'] if 'X' in parameters else variables['X']
                 y = parameters['Y'] if 'Y' in parameters else variables['Y']
@@ -932,7 +938,6 @@ class RS274:
         # Dwell (G4).
         dwell_group = rs274.group_create("G4", "Dwell")
         dwell_group.g_code("G4", "P", "Dwell")
-
 
         # Set active plane (G17, G18, G19).
         plane_selection_group = rs274.group_create("G17", "Plane Selection")
@@ -1470,6 +1475,7 @@ class RS274:
         assert isinstance(tokens, list)
 
         return '[' + ", ".join([f"{token}" for token in tokens]) + ']'
+
 
 class Template:
     """Represents a G/M code that is a member of a Group."""
@@ -2089,36 +2095,18 @@ class LetterToken(Token):
         # Deal with case where number ends at end of *line*:
         if number_end >= line_size and have_digit:
             end_index = number_end
-        # print(f"end_index={end_index}")
 
         # Construct and return *token*:
-        #templates_table = rs274.templates_table
-        #parameter_letters = rs274.parameter_letters
         token = None
-        #template = None
         if end_index >= 0:
             number_text = line[number_start:number_end]
             # print(f"number_text='{number_text}'")
             if have_decimal_point:
                 number = float(number_text)
-                #g_or_m_code_key = f"{letter}{number}"
             else:
                 number = int(number_text)
-                #g_or_m_code_key = f"{letter}{number}"
-            # print(f"g_or_m_code_key='{g_or_m_code_key}'")
-            #if g_or_m_code_key in templates_table:
-            #    template = templates_table[g_or_m_code_key]
-            #elif letter in templates_table:
-            #    # We have a single *letter* template object:
-            #    template = templates_table[letter]
-            #elif letter in parameter_letters:
-            #    template = Command(letter)
-            #else:
-            #    # Something is wrong:
-            #    assert False, f"{line} failed {templates_table}"
 
             # Create the *token* if we have a positive sort_key:
-            #if template is not None:
             token = LetterToken(end_index, letter, number)
         # print(f"<=token_variable_match(*, '{line}', {start_index})=>{token}")
         return token
@@ -2377,7 +2365,7 @@ if __name__ == "__main__":
             commands = RS274.g91_remove(commands)
             commands = RS274.drill_cycles_replace(commands)
             rs274.commands_write(commands, os.path.join("/tmp", file_name))
-            #commands = rs274.g83.replace(commands)
+            # commands = rs274.g83.replace(commands)
             # for command_index, command in enumerate(commands):
             #        print(" Commandx[{0}]: {1}".format(command_index, command))
         print("")
