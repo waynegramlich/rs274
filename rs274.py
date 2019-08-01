@@ -5,7 +5,7 @@ import sys
 import math
 import os
 
-# Import some types for Type hints:
+# Import some types for type hints:
 from typing import Callable, Dict, List, Tuple, Union
 Number = Union[float, int]
 NullStr = Union[None, str]
@@ -19,14 +19,14 @@ Error = str
 # * Add test suite for block parsing.
 # * Add sticky variables, types, and units.
 # * Improve *Group* construction documentation.
-# * Run through pydocstyle
 # * Add G2/G3 R => IJK conversion.
 # * Add units conversion.
 # * Allow for multiple modal groups rather than just the motion group?
 # * Add re-blocker code.
+# * Add routine call type checking using type hinting.
+# * Improve Error/Waring messages.
 #
 # Documentation, Linting:
-# * Run everything through flake8, pylint, and some sort of doc string checker.
 # * Add type annotation via PEP484, PEP3107.
 # * https://aboutsimon.com/blog/2018/04/04/
 #      Python3-Type-Checking-And-Data-Validation-With-Type-Hints.html
