@@ -193,6 +193,7 @@ class Group:
         templates_table[name] = template
         groups_table[name] = group
 
+        # Load up *parameter_letters* from *parameters*:
         parameters: Dict[str, Number] = template.parameters
         parameter: str
         for parameter in parameters.keys():
@@ -228,13 +229,13 @@ class RS274:
         self.groups_list_keyed: List[Group] = False   # *True* if all groups assigned a sort key
         self.groups_table: Dict[str, Group] = dict()  # *Group*'s table keyed with short name
         self.line_number_group: Optional[Group] = None  # *Group* for N codes.
-        self.motion_command_name: Optional[str] = None  # Name of last motion command (or *None*)
+        self.motion_command_name: str = ""              # Name of last motion command (or *None*)
         self.motion_group: Optional[Group] = None       # The motion *Group* is special
         self.parameter_letters: Dict[str, Number] = dict()  # For test, collect all template params.
         self.templates_table: Dict[str, Template] = dict()  # Command name (e.g. "G0") to *Template*
         self.variables: Dict[str, None] = dict()        # Unclear if this is needed....
         self.white_space: str = " \t"                   # White space characters for tokenizing
-        self.token_match_routines: Tuple(callable) = (  # The ordered token match routines
+        self.token_match_routines: Tuple[Callable] = (  # The ordered token match routines
             OLetterToken.match,
             LetterToken.match,
             CommentToken.match,
@@ -252,7 +253,6 @@ class RS274:
         if not groups_list_keyed:
             # Sweep through *groups_list* and set the key attribute for each *group*:
             groups_list: List[Group] = rs274.groups_list
-            assert isinstance(groups_list, list)
             index: int
             group: Group
             for index, group in enumerate(groups_list):
@@ -316,7 +316,7 @@ class RS274:
                              tracing: Optional[str] = None) -> Tuple[List[Command],
                                                                      List[Error],
                                                                      "List[LetterToken]",
-                                                                     Optional[str]]:
+                                                                     str]:
         """Return the commands extracted from tokens.
 
         Arguments:
@@ -360,7 +360,7 @@ class RS274:
 
         # Flag when two or more *commands* are in the same group:
         conflict_errors: List[str]
-        motion_command_name: Optional[str]
+        motion_command_name: str
         conflict_errors, motion_command_name = RS274.group_conflicts_detect(commands)
         errors.extend(conflict_errors)
 
@@ -419,7 +419,8 @@ class RS274:
 
         # Split *content* into *blocks* (i.e. lines) and parse them into *commands* that
         # are appended to *command_list*:
-        lines = content.split('\n')
+        lines: List[str] = content.split('\n')
+        command: Command
         commands_list: List[List[Command]] = list()
         line_index: int
         line: str
@@ -444,7 +445,6 @@ class RS274:
                 # Dump the *commands*:
                 if isinstance(rs274_commands, list):
                     commands: List[Command] = rs274_commands
-                    command: Command
                     index: int
                     for index, command in enumerate(commands):
                         assert isinstance(command, Command)
@@ -454,8 +454,6 @@ class RS274:
 
         # This arcane command will flatten the *commands_list* into *flattened_commands*:
         flattened_commands: List[Command] = sum(commands_list, [])
-        for command in flattened_commands:
-            assert isinstance(command, Command)
 
         # Wrap up any requested *tracing* and return *flattened_commands*:
         if tracing is not None:
@@ -491,12 +489,15 @@ class RS274:
                 canned cylces replaced with G0/G1 commands.
 
         """
-        # Start ...
-        nan = float("nan")  # Not A Number
+        # Sweep across *commands* special casing some of the G commands:
+        nan: float = float("nan")  # Not A Number
         retract_mode: Optional[str] = None
         updated_commands: List[Command] = list()
         variables: Dict[str, Number] = dict()
         command: Command
+        x: float
+        y: float
+        z: float
         for command in commands:
             # Unpack *command*:
             name: str = command.Name
@@ -527,15 +528,15 @@ class RS274:
                             else (variables['Q'] if 'Q' in variables else nan))
                 r: float = (parameters['R'] if 'R' in parameters else
                             (variables['R'] if 'R' in variables else nan))
-                x: float = parameters['X'] if 'X' in parameters else variables['X']
-                y: float = parameters['Y'] if 'Y' in parameters else variables['Y']
+                x = parameters['X'] if 'X' in parameters else variables['X']
+                y = parameters['Y'] if 'Y' in parameters else variables['Y']
                 z_depth: float = variables['Zdepth']
-                z: float = variables['Z']
+                z = variables['Z']
 
                 # Provide *comment_command* to show all of the parameters used for the
                 # drilling cycle:
-                comment_command = Command(f"( {name} P:{p} Q:{q} R:{r} X:{x} Y:{y} Z:{z}"
-                                          f" Zdepth:{z_depth} retract_mode:{retract_mode} )")
+                comment_command: Command = Command(f"({name} P:{p} Q:{q} R:{r} X:{x} Y:{y} Z:{z} "
+                                                   f"Zdepth:{z_depth} retract_mode:{retract_mode})")
                 updated_commands.append(comment_command)
 
                 # Rapid (i.e. `G0`) to (*x*, *y*).  We assume that we are already at either
@@ -642,7 +643,7 @@ class RS274:
 
     # RS274.group_conflicts_detect()
     @staticmethod
-    def group_conflicts_detect(commands: List[Command]) -> Tuple[List[Error], Optional[str]]:
+    def group_conflicts_detect(commands: List[Command]) -> Tuple[List[Error], str]:
         """Detect group conflicts in a list of Command's.
 
         Arguments:
@@ -654,15 +655,14 @@ class RS274:
 
         """
         # Grab some values from *rs274* (i.e. *self*):
-        motion_group = rs274.motion_group
-        assert isinstance(motion_group, Group)
-        groups_table = rs274.groups_table
+        motion_group: Optional[Group] = rs274.motion_group
+        groups_table: Dict[str, Group] = rs274.groups_table
 
         # Sweep through *commands* using *duplicates_table* to find commands that conflict with
         # one another because they are in the same *Group*:
         duplicates_table: Dict[str, Command] = dict()
         errors: List[Error] = list()
-        motion_command_name: Optional[str] = None
+        motion_command_name: str = ""
         g80_found: bool = False
         for command in commands:
             # Grab values from *command*:
@@ -685,7 +685,7 @@ class RS274:
 
             if group is not None:
                 # Check for duplicates *group_name* in *duplicates_table*:
-                group_name = group.short_name
+                group_name: str = group.short_name
                 if group_name in duplicates_table:
                     # Flag commands from the same group as an error:
                     conflicting_command = duplicates_table[group_name]
@@ -700,7 +700,7 @@ class RS274:
                     motion_command_name = command.Name
 
         if g80_found:
-            motion_command_name = None
+            motion_command_name = ""
 
         # Return the resulting *errors* and *motion_command_name*:
         return errors, motion_command_name
@@ -722,11 +722,11 @@ class RS274:
         """
         # Grab some values from *rs274* (i.e. *self*):
         rs274: RS274 = self
-        groups_table = rs274.groups_table
-        groups_list = rs274.groups_list
+        groups_table: Dict[str, Group] = rs274.groups_table
+        groups_list: List[Group] = rs274.groups_list
 
         # Create the *group*:
-        group = Group(rs274, short_name, title)
+        group: Group = Group(rs274, short_name, title)
 
         # Stuff the new *group* into *groups_table* using *short_name* as the key:
         assert short_name not in groups_table
@@ -739,8 +739,8 @@ class RS274:
             groups_list.append(group)
         else:
             assert before in groups_table
-            before_group = groups_table[before]
-            before_index = groups_list.index(before_group)
+            before_group: Group = groups_table[before]
+            before_index: int = groups_list.index(before_group)
             groups_list.insert(before_index, group)
 
         # All done.  Return *group*:
@@ -750,7 +750,7 @@ class RS274:
     def groups_create(self):
         """Create all of the needed groups."""
         # Grab the *groups* object from *rs274* (i.e. *self*):
-        rs274 = self
+        rs274: RS274 = self
 
         # The table below is largely derived from section 22 "G Code Order of Execution"
         # from the LinuxCNC G-Code overview documentation
@@ -763,7 +763,7 @@ class RS274:
         # the same line):
 
         # The *axes* variable lists all of the axis parameters:
-        axes = "XYZABCUVWFS"
+        axes: str = "XYZABCUVWFS"
 
         # Line_number:
         line_number_group = rs274.group_create("N", "Line Number")
@@ -771,35 +771,35 @@ class RS274:
         rs274.line_number_group = line_number_group
 
         # Comment (including message)
-        comment_group = rs274.group_create("(", "Comment")
+        comment_group: Group = rs274.group_create("(", "Comment")
         rs274.comment_group = comment_group
 
         # Set feed rate mode (G93, G94).
-        feed_rate_group = rs274.group_create("G93", "Feed Rate")
+        feed_rate_group: Group = rs274.group_create("G93", "Feed Rate")
         feed_rate_group.g_code("G93", "", "Inverse Time Mode")
         feed_rate_group.g_code("G94", "", "Units Per Minute Mode")
         feed_rate_group.g_code("G95", "", "Units Per Revolution Mode")
 
         # Set feed rate (F).
-        feed_group = rs274.group_create("F", "Feed")
+        feed_group: Group = rs274.group_create("F", "Feed")
         feed_group.letter_code('F', "Set Feed Rate")
 
         # Set spindle speed (S).
-        spindle_speed_group = rs274.group_create("S", "Spindle")
+        spindle_speed_group: Group = rs274.group_create("S", "Spindle")
         spindle_speed_group.letter_code('S', "Set Spindle Speed")
 
         # Select tool (T).
-        tool_group = rs274.group_create("T", "Tool")
+        tool_group: Group = rs274.group_create("T", "Tool")
         tool_group.letter_code('T', "Select Tool")
 
         # HAL pin I/O (M62-M68).
 
         # Change tool (M6) and Set Tool Number (M61).
-        tool_change_group = rs274.group_create("M6", "Tool Change")
+        tool_change_group: Group = rs274.group_create("M6", "Tool Change")
         tool_change_group.m_code("M6", "T", "Tool Change")
 
         # Spindle on or off (M3, M4, M5).
-        spindle_control_group = rs274.group_create("M3", "Spindle Control")
+        spindle_control_group: Group = rs274.group_create("M3", "Spindle Control")
         spindle_control_group.m_code("M3", "S", "Start Spindle Clockwise")
         spindle_control_group.m_code("M4", "S", "Start Spindle Counterclockwise")
         spindle_control_group.m_code("M19", "RQP", "Orient Spindle")
@@ -809,12 +809,12 @@ class RS274:
         # Save State (M70, M73), Restore State (M72), Invalidate State (M71).
 
         # Coolant on or off (M7, M8, M9).
-        coolant_group = rs274.group_create("M7", "Coolant")
+        coolant_group: Group = rs274.group_create("M7", "Coolant")
         coolant_group.m_code("M7", "", "Enable Mist Coolant")
         coolant_group.m_code("M8", "", "Enable Flood Coolant")
 
         # Enable or disable overrides (M48, M49, M50, M51, M52, M53).
-        feed_rate_mode_group = rs274.group_create("M48", "Feed Rate Mode")
+        feed_rate_mode_group: Group = rs274.group_create("M48", "Feed Rate Mode")
         feed_rate_mode_group.m_code("M48", "", "Enable Speed/Feed Override")
         feed_rate_mode_group.m_code("M49", "", "Disable Speed/Feed Override")
         feed_rate_mode_group.m_code("M50", "P", "Feed Override Control")
@@ -825,11 +825,11 @@ class RS274:
         # User-defined Commands (M100-M199).
 
         # Dwell (G4).
-        dwell_group = rs274.group_create("G4", "Dwell")
+        dwell_group: Group = rs274.group_create("G4", "Dwell")
         dwell_group.g_code("G4", "P", "Dwell")
 
         # Set active plane (G17, G18, G19).
-        plane_selection_group = rs274.group_create("G17", "Plane Selection")
+        plane_selection_group: Group = rs274.group_create("G17", "Plane Selection")
         plane_selection_group.g_code("G17", "", "Use XY Plane")
         plane_selection_group.g_code("G18", "", "Use ZX Plane")
         plane_selection_group.g_code("G19", "", "Use YZ Plane")
@@ -838,13 +838,13 @@ class RS274:
         plane_selection_group.g_code("G19.1", "", "Use VW Plane")
 
         # Set length units (G20, G21).
-        units_group = rs274.group_create("G20", "Units")
+        units_group: Group = rs274.group_create("G20", "Units")
         units_group.g_code("G20", "", "Use inches for length")
         units_group.g_code("G21", "", "Use millimeters for length")
 
         # Cutter radius compensation on or off (G40, G41, G42)
-        cutter_radius_compensation_group = rs274.group_create("G40",
-                                                              "Cutter Radius Compensation Group")
+        group_name = "Cutter Radius Compensation Group"
+        cutter_radius_compensation_group: Group = rs274.group_create("G40", group_name)
         cutter_radius_compensation_group.g_code("G40", "", "Compensation Off")
         cutter_radius_compensation_group.g_code("G41", "D", "Compensation Left")
         cutter_radius_compensation_group.g_code("G42", "D", "Compensation Right")
@@ -852,14 +852,15 @@ class RS274:
         cutter_radius_compensation_group.g_code("G42.1", "DL", "Dynamic Compensation Right")
 
         # Cutter length compensation on or off (G43, G49)
-        tool_length_offset_group = rs274.group_create("G43", "Tool Offset Length")
+        tool_length_offset_group: Group = rs274.group_create("G43", "Tool Offset Length")
         tool_length_offset_group.g_code("G43", "H", "Tool Length Offset")
         tool_length_offset_group.g_code("G43.1", axes, "Dynamic Tool Length Offset")
         tool_length_offset_group.g_code("G43.2", "H", "Apply Additional Tool Length Offset")
         tool_length_offset_group.g_code("G49", "", "Cancel Tool Length Compensation")
 
         # Coordinate system selection (G54, G55, G56, G57, G58, G59, G59.1, G59.2, G59.3).
-        select_coordinate_system_group = rs274.group_create("G54", "Select Machine Coordinates")
+        select_coordinate_system_group: Group = rs274.group_create("G54",
+                                                                   "Select Machine Coordinates")
         select_coordinate_system_group.g_code("G54", "", "Select Coordinate System 1")
         select_coordinate_system_group.g_code("G55", "", "Select Coordinate System 2")
         select_coordinate_system_group.g_code("G56", "", "Select Coordinate System 3")
@@ -871,27 +872,27 @@ class RS274:
         select_coordinate_system_group.g_code("G59.3", "", "Select Coordinate System 9")
 
         # Set path control mode (G61, G61.1, G64)
-        path_control_group = rs274.group_create("G61", "Path Control")
+        path_control_group: Group = rs274.group_create("G61", "Path Control")
         path_control_group.g_code("G61", "", "Exact Path Mode Collinear Allowed")
         path_control_group.g_code("G61.1", "", "Exact Path Mode No Collinear")
         path_control_group.g_code("G64", "", "Path Blending")
 
         # Set distance mode (G90, G91).
-        distance_mode_group = rs274.group_create("G90", "Distance Mode")
+        distance_mode_group: Group = rs274.group_create("G90", "Distance Mode")
         distance_mode_group.g_code("G90", "", "Absolute Distance Mode")
         distance_mode_group.g_code("G91", "", "Incremental Distance Mode")
         distance_mode_group.g_code("G90.1", "", "Absolute Arc Distance Mode")
         distance_mode_group.g_code("G91.1", "", "Incremental Arc Distance Mode")
 
         # Set retract mode (G98, G99).
-        retract_mode_group = rs274.group_create("G98", "Retract Mode")
+        retract_mode_group: Group = rs274.group_create("G98", "Retract Mode")
         retract_mode_group.g_code("G98", "", "Retract to Start")
         retract_mode_group.g_code("G99", "", "Retract to R")
 
         # Go to reference location (G28, G30) or change coordinate system data (G10) or
         # set axis offsets (G92, G92.1, G92.2, G94).
         # Reference Motion Mode:
-        reference_motion_group = rs274.group_create("G28", "Reference Motion")
+        reference_motion_group: Group = rs274.group_create("G28", "Reference Motion")
         reference_motion_group.g_code("G28", axes, "Go/Set Position")
         reference_motion_group.g_code("G28.1", axes, "Go/Set Position")
         reference_motion_group.g_code("G30", axes, "Go/Set Position")
@@ -902,7 +903,7 @@ class RS274:
 
         # Perform motion (G0 to G3, G33, G38.n, G73, G76, G80 to G89),
         # as modified (possibly) by G53:
-        motion_group = rs274.group_create("G0", "Motion")
+        motion_group: Group = rs274.group_create("G0", "Motion")
         motion_group.g_code("G0", axes, "Rapid Move")
         motion_group.g_code("G1", axes, "Linear Move")
         motion_group.g_code("G2", axes + "IJKR", "CW Arc")
@@ -928,16 +929,16 @@ class RS274:
         motion_group.g_code("G76", axes + "PIJRKQHLE", "Threading Cycle")
 
         # Turning off a canned cycle must occur after the canned cycle:
-        canned_cycles_group = rs274.group_create("G80", "Canned Cycles")
+        canned_cycles_group: Group = rs274.group_create("G80", "Canned Cycles")
         canned_cycles_group.g_code("G80", "", "Cancel Canned Cycle")
 
         # Spindle/Coolant stopping:
-        spindle_coolant_stopping_group = rs274.group_create("M5", "Spinde/Collant Stopping")
+        spindle_coolant_stopping_group: Group = rs274.group_create("M5", "Spinde/Collant Stopping")
         spindle_coolant_stopping_group.m_code("M5", "", "Stop Spindle")
         spindle_coolant_stopping_group.m_code("M9", "", "Stop Coolant")
 
         # Stop (M0, M1, M2, M30, M60).
-        stopping_group = rs274.group_create("M0", "Machine Stopping and/or Pausing")
+        stopping_group: Group = rs274.group_create("M0", "Machine Stopping and/or Pausing")
         stopping_group.m_code("M0", "", "Program Pause")
         stopping_group.m_code("M1", "", "Program End")
         stopping_group.m_code("M2", "", "Program Pause")
@@ -948,8 +949,6 @@ class RS274:
     @staticmethod
     def groups_show(groups: List[Group], label: str):
         """Print out a labled list of Group's for debugging."""
-        assert isinstance(groups, list)
-        assert isinstance(label, str)
         print(label)
         index: int
         group: Group
@@ -994,8 +993,6 @@ class RS274:
         letter: str
         for letter_index, letter in enumerate(unused_tokens_table.keys()):
             # Perform any requested *tracing*:
-            assert isinstance(letter, str)
-            assert isinstance(letter_index, int)
             # if tracing is not None:
             #     print(f"{tracing}Letter[{letter_index}]:'{letter}'")
 
@@ -1005,9 +1002,7 @@ class RS274:
             command: Command
             for command_index, command in enumerate(commands):
                 # Unpack *command*:
-                assert isinstance(command, Command)
-                assert isinstance(command_index, int)
-                name = command.Name
+                name: str = command.Name
                 # if tracing is not None:
                 #     print(f"{tracing} Command[{command_index}]:{command}")
 
@@ -1021,7 +1016,6 @@ class RS274:
                     template_index: int
                     template_letter: str
                     for template_index, template_letter in enumerate(template.parameters.keys()):
-                        assert isinstance(template_index, int)
                         # if tracing is not None:
                         #     print(f"{tracing}   TemplateL[{template_index}]:'{template_letter}'")
                         if letter == template_letter:
@@ -1035,15 +1029,14 @@ class RS274:
         if tracing is not None:
             unused_tokens_text = RS274.tokens_to_text(list(unused_tokens_table.values()))
             commands_text = RS274.commands_to_text(commands)
-            pairs = list()
+            pairs: List[str] = list()
             sub_commands: List[Command]
             for letter, sub_commands in letter_commands_table.items():
                 sub_commands_text = RS274.commands_to_text(sub_commands)
                 pairs.append(f"'{letter}': {sub_commands_text}")
-            pairs_text = '{' + ', '.join(pairs) + '}'
+            pairs_text: str = '{' + ', '.join(pairs) + '}'
             print(f"{tracing}<=RS274.letter_commands_table_create("
                   f"{unused_tokens_text}, {commands_text})=>{pairs_text}")
-
         return letter_commands_table
 
     # RS274:line_parse():
@@ -1075,16 +1068,18 @@ class RS274:
         final_commands: List[Command] = list()
 
         # Grab *motion_command_name* from *rs274*; it will be stuffed back into *rs274* later:
-        rs274 = self
-        motion_command_name: Optional[str] = rs274.motion_command_name
-        assert isinstance(motion_command_name, str) or motion_command_name is None
+        rs274: RS274 = self
+        motion_command_name: str = rs274.motion_command_name
         if tracing is not None:
             print(f"{tracing}before: motion_command_name='{motion_command_name}'")
 
         # Start by tokenizing the *block* (i.e. a line of G-code) into *tokens*:
+        tokens: List[Token]
+        tokenize_errors: List[str]
         tokens, tokenize_errors = rs274.line_tokenize(line)
         errors.extend(tokenize_errors)
 
+        # See whether we have "G80" and convert it to a "G0" for a motion command:
         token: Token
         for token in tokens:
             if isinstance(token, LetterToken) and token.letter == 'G' and token.number == 80:
@@ -1101,15 +1096,19 @@ class RS274:
             # on a "sticky" motion G command, and see if the fixes things up:
 
             # Do the first attempt at parsing tokens into *final_commands*:
-            commands1, errors1, unused_tokens1, motion_command_name1 = \
-              rs274.commands_from_tokens(tokens, tracing=next_tracing)
-            assert isinstance(motion_command_name1, str) or motion_command_name1 is None
+            commands1: List[Command]
+            errors1: List[Error]
+            unused_tokens1: List[LetterToken]
+            motion_command_name1: str
+            (commands1, errors1, unused_tokens1,
+             motion_command_name1) = rs274.commands_from_tokens(tokens,
+                                                                tracing=next_tracing)
 
             # If there are no errors and no unused tokens, we have succeeded:
             if not errors1 and not unused_tokens1:
                 # We have have succeeded.  Update both *final_codes* and *motion_command_name*:
                 final_commands = commands1
-                if motion_command_name1 is not None:
+                if motion_command_name1 != "":
                     # print(f"setting motion_command_name={motion_command_name}")
                     motion_command_name = motion_command_name1
                 if tracing is not None:
@@ -1132,7 +1131,7 @@ class RS274:
 
                 # If we have a *motion_command_name*, create a *letter_token* and tack it onto
                 # *tokens*:
-                assert isinstance(motion_command_name, str) and len(motion_command_name) >= 2
+                assert len(motion_command_name) >= 2
                 letter: str = motion_command_name[0]
                 assert letter in "G"
                 number_text: str = motion_command_name[1:]
@@ -1141,9 +1140,12 @@ class RS274:
                 tokens.append(letter_token)
 
                 # Tack *motion_name* (as a *Token*) onto *tokens* and try again:
+                commands2: List[Command]
+                errors2: List[Error]
+                unused_tokens2: List[LetterToken]
+                motion_command_name2: str
                 commands2, errors2, unused_tokens2, motion_command_name2 = \
                     rs274.commands_from_tokens(tokens, tracing=next_tracing)
-                assert isinstance(motion_command_name2, str) or motion_command_name2 is None
 
                 # for index, command in enumerate(commands1):
                 #     print(f" commands2[{index}]:{command}")
@@ -1154,7 +1156,7 @@ class RS274:
                 if not errors2 and not unused_tokens2:
                     # We have succeeded by adding *motion_command_name* to *tokens*:
                     final_commands = commands2
-                    if motion_command_name2 is not None:
+                    if motion_command_name2 != "":
                         motion_command_name = motion_command_name2
 
                 # print(f"len(errors2)={len(errors2)}")
@@ -1173,7 +1175,7 @@ class RS274:
                     unused_text: str = RS274.tokens_to_text(unused_tokens1)
                     unused_tokens_error: str = f"'{unused_text}' is/are unused"
                     errors.append(unused_tokens_error)
-                if motion_command_name is not None:
+                if motion_command_name != "":
                     motion_command_name = motion_command_name1
 
         # Now we can stuff *model_motion_name* back into *rs274*:
@@ -1230,7 +1232,7 @@ class RS274:
                         break
                 if not matched:
                     remaining: str = line[index:]
-                    error = f"Can not parse '{remaining}'"
+                    error: str = f"Can not parse '{remaining}'"
                     errors.append(error)
                     break
 
@@ -1293,23 +1295,20 @@ class RS274:
         """
         # Perform any requested *tracing*:
         if tracing is not None:
-            letters_text = " ".join([f"{letter}" for letter in letter_commands_table.keys()])
-            unused_tokens_text = RS274.tokens_to_text(list(unused_tokens_table.values()))
+            letters_text: str = " ".join([f"{letter}" for letter in letter_commands_table.keys()])
+            unused_tokens_text: str = RS274.tokens_to_text(list(unused_tokens_table.values()))
             print(f"{tracing}=>RS274.tokens_bind_to_commands("
                   f"'{letters_text}', '{unused_tokens_text}')")
 
         # Now sweep through *letter_commands_table* looking for *errors* and attaching
         # each appropriate *token* to a *command* (thereby making them used tokens):
-        errors = list()
+        errors: List[Error] = list()
         letter: str
         letter_commands: List[Command]
         for letter, letter_commands in letter_commands_table.items():
             # Each *letter* in *letter_commands_table has an associated list of *Command*'s:
-            assert isinstance(letter, str)
-            assert isinstance(letter_commands, list)
-
             # Dispatch on *letter_commands_size*:
-            letter_commands_size = len(letter_commands)
+            letter_commands_size: int = len(letter_commands)
             if letter_commands_size == 0:
                 # *letter* is unused, so there is nothing to do:
                 pass
@@ -1320,7 +1319,6 @@ class RS274:
 
                 # Take the *token* value and put it into *command*:
                 command: Command = letter_commands[0]
-                assert isinstance(command, Command)
                 parameters: Dict[str, Number] = command.Parameters
                 parameters[letter] = token.number_get()
             elif letter_commands_size >= 2:
@@ -1413,7 +1411,7 @@ class Token:
             print(f"{tracing}=>Token.__init__(*, {end_index})")
 
         # Fill in the *token* object (i.e. *self*) from the routine arguments:
-        token = self
+        token: Token = self
         self.end_index: int = end_index
         token = token
 
@@ -1430,7 +1428,7 @@ class Token:
     def catagorize(self, commands: List[Command], unused_tokens: "List[Token]"):
         """Place holder routine that fails."""
         # If this routine is called, we have missed writing a *catagorize* method somewhere:
-        token = self
+        token: Token = self
         assert False, f"No catagorize() method for {type(token)}"
 
     # Token.letter_get():
@@ -1484,7 +1482,7 @@ class BracketToken(Token):
             print(f"{tracing}=>BracketToken.__init__(*, {end_index}, {value})")
 
         # Initialize the *token_bracket* (i.e. *self*):
-        bracket_token = self
+        bracket_token: BracketToken = self
         super().__init__(end_index, tracing=next_tracing)
         self.value: Number = value
         bracket_token = bracket_token
@@ -1496,14 +1494,14 @@ class BracketToken(Token):
     # BracketToken.__str__():
     def __str__(self) -> str:
         """Convert BracketToken to human readable string."""
-        token_bracket = self
+        token_bracket: BracketToken = self
         return "[{0}]".format(token_bracket.value)
 
     # BracketToken.catagorize():
     def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Catagorize the bracket token into unused tokens."""
         # Currently nobody uses a *bracket_token* (i.e. *self*):
-        bracket_token = self
+        bracket_token: BracketToken = self
         unused_tokens.append(bracket_token)
 
     # BracketToken.match():
@@ -1596,14 +1594,14 @@ class BracketToken(Token):
                     break
 
         # We have succecded when *end_index* is positive:
-        token: Optional[BracketToken] = None
+        bracket_token: Optional[BracketToken] = None
         if end_index >= 0:
-            token = BracketToken(end_index, float(line[number_start:number_end]))
+            bracket_token = BracketToken(end_index, float(line[number_start:number_end]))
 
         # Wrap up any requested *tracing* and return *token*:
         if tracing is not None:
             print("{tracing}<=BracketToken.match('{line}', {start_index2})=>{token}")
-        return token
+        return bracket_token
 
     # BracketToken.number_get():
     def number_get(self) -> Number:
@@ -1670,10 +1668,10 @@ class BracketToken(Token):
         terminator: str
         for terminator in terminators:
             # Now verify that *block* is matched and the resulting *token* is correct:
-            token = BracketToken.match(line + terminator, 0)
-            assert isinstance(token, BracketToken)
-            assert token.end_index == len(line)
-            assert token.value == value
+            bracket_token: Optional[BracketToken] = BracketToken.match(line + terminator, 0)
+            assert isinstance(bracket_token, BracketToken)
+            assert bracket_token.end_index == len(line)
+            assert bracket_token.value == value
         return True
 
 
@@ -1700,7 +1698,7 @@ class CommentToken(Token):
             print("{tracing}=>CommentToken.__init__(*, {end_index}, {is_first}, '{comment}')")
 
         # Initialize the *token_comment* (i.e. *self*):
-        comment_token = self
+        comment_token: CommentToken = self
         super().__init__(end_index)
         self.is_first: bool = is_first
         self.comment: str = comment
@@ -1747,9 +1745,9 @@ class CommentToken(Token):
 
         """
         # We most start with a open parenthesis:
-        end_index = -1
-        is_first = start_index == 0
-        line_size = len(line)
+        end_index: int = -1
+        is_first: bool = start_index == 0
+        line_size: int = len(line)
         if line_size > 0 and line[start_index] == '(':
             # Scan looking for the closing parenthesis:
             index: int
@@ -1760,11 +1758,11 @@ class CommentToken(Token):
                     break
 
         # We have have successfully matached a comment if *end_index* is positive:
-        token = None
+        comment_token: Optional[CommentToken] = None
         if end_index >= 0:
-            token = CommentToken(end_index, is_first, line[start_index:end_index])
-        # print("token_comment_match(*, '{0}', {1}) => {2}".format(line, start_index, token))
-        return token
+            comment_token = CommentToken(end_index, is_first, line[start_index:end_index])
+        # print("CommentToken.match(*, '{0}', {1}) => {2}".format(line, start_index, token))
+        return comment_token
 
     # CommentToken.test():
     @staticmethod
@@ -1826,12 +1824,12 @@ class LetterToken(Token):
 
         """
         # Preform any requested *tracing*:
-        next_tracing = None if tracing is None else tracing + " "
+        next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
             print(f"{tracing}=>LetterToken.__init__(*, {end_index}, '{letter}', {number})")
 
         # Initialize the *letter_token* (i.e. *self*):
-        letter_token = self
+        letter_token: LetterToken = self
         super().__init__(end_index, tracing=next_tracing)
         self.letter: str = letter
         self.number: Number = number
@@ -1845,9 +1843,9 @@ class LetterToken(Token):
     def __str__(self) -> str:
         """Return LetterToken as a string."""
         # Unpack *token_letter* (i.e. *self*):
-        token_letter = self
-        letter: str = token_letter.letter
-        number: Number = token_letter.number
+        letter_token: LetterToken = self
+        letter: str = letter_token.letter
+        number: Number = letter_token.number
 
         # Figure out whether to use an integer of a float to print:
         fractional: float
@@ -1868,14 +1866,14 @@ class LetterToken(Token):
 
         """
         # Unpack *letter_token* (i.e. *self*):
-        letter_token = self
-        letter = letter_token.letter
-        number = letter_token.number
+        letter_token: LetterToken = self
+        letter: str = letter_token.letter
+        number: Number = letter_token.number
 
         # Convert 'F', 'G', 'M', 'N', 'S', and 'T' *letter_token* directly into a *command*:
         if letter in "FGMNST":
-            name = f"{letter}{number}"
-            command = Command(name)
+            name: str = f"{letter}{number}"
+            command: Command = Command(name)
             commands.append(command)
         else:
             # Otherwise *letter_token* gets pushed into *unused_tokens*:
@@ -1948,7 +1946,7 @@ class LetterToken(Token):
             end_index = number_end
 
         # Construct and return *token*:
-        token = None
+        letter_token: Optional[LetterToken] = None
         if end_index >= 0:
             number_text = line[number_start:number_end]
             # print(f"number_text='{number_text}'")
@@ -1958,9 +1956,9 @@ class LetterToken(Token):
                 number = int(number_text)
 
             # Create the *token* if we have a positive sort_key:
-            token = LetterToken(end_index, letter, number)
-        # print(f"<=token_variable_match(*, '{line}', {start_index})=>{token}")
-        return token
+            letter_token = LetterToken(end_index, letter, number)
+        # print(f"<=LetterToken.match(*, '{line}', {start_index})=>{letter_token}")
+        return letter_token
 
     # LetterToken.letter_get():
     def letter_get(self) -> str:
@@ -1986,7 +1984,7 @@ class LetterToken(Token):
 
         """
         # Grab the *letter* from *letter_token* (i.e. *self*):
-        letter_token = self
+        letter_token: LetterToken = self
         letter: str = letter_token.letter_get()
 
         # Stuff *token* into *tokens_table* (or generate an *error*):
@@ -2046,12 +2044,12 @@ class LetterToken(Token):
         terminators: List[str] = ["", " ", "(", ")", "x"]
         terminator: str
         for terminator in terminators:
-            full_line = line + terminator
-            token = LetterToken.match(full_line, 0)
-            assert isinstance(token, LetterToken), f"'{full_line}' should not have failed"
-            assert token.end_index == len(line)
-            assert token.letter == line[0].upper()
-            assert token.number == number
+            full_line: str = line + terminator
+            letter_token: Optional[LetterToken] = LetterToken.match(full_line, 0)
+            assert isinstance(letter_token, LetterToken), f"'{full_line}' should not have failed"
+            assert letter_token.end_index == len(line)
+            assert letter_token.letter == line[0].upper()
+            assert letter_token.number == number
         return True
 
 
@@ -2077,12 +2075,12 @@ class OLetterToken(Token):
 
         """
         # Perfom an requested *tracing*:
-        next_tracing = None if tracing is None else tracing + " "
+        next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
             print("{tracing}=>OLetterToken.__init__(*, {end_index}, {routine_number}, '{keyword}')")
 
         # Initialize the *token_o_letter* (i.e. *self*):
-        o_letter_token = self
+        o_letter_token: OLetterToken = self
         super().__init__(end_index, tracing=next_tracing)
         self.routine_number: int = routine_number
         self.keyword: str = keyword.lower()
@@ -2095,14 +2093,14 @@ class OLetterToken(Token):
     # OLetterToken.__str__():
     def __str__(self):
         """Return OLetterToken as a string."""
-        token_letter = self
-        return "O{0} {1}".format(token_letter.routine_number, token_letter.keyword)
+        o_letter_token_letter: OLetterToken = self
+        return f"O{o_letter_token_letter.routine_number} {o_letter_token_letter.keyword}"
 
     # OLetterToken.catagorize():
     def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Sort OLetterToken into unused tokens list."""
         # Currently nobody uses a *oletter_token* (i.e. *self*):
-        oletter_token = self
+        oletter_token: OLetterToken = self
         unused_tokens.append(oletter_token)
 
     # OLetterToken.match():
@@ -2116,16 +2114,16 @@ class OLetterToken(Token):
 
         """
         # print("=>OLetterToken.match('{0}', {1})".format(line[start_index:], start_index))
-        name = "None"
-        white_space = " \t"
-        end_index = -1
-        mode = 0
-        number_start = -1
-        number_end = -1
-        line_size = len(line)
+        name: str = ""
+        white_space: str = " \t"
+        end_index: int = -1
+        mode: int = 0
+        number_start: int = -1
+        number_end: int = -1
+        line_size: int = len(line)
         index: int
         for index in range(start_index, line_size):
-            character = line[index].lower()
+            character: str = line[index].lower()
             # print("[{0}]:'{1}', mode={2}".format(index, character, mode))
             if mode == 0:
                 if character == 'o':
@@ -2146,9 +2144,9 @@ class OLetterToken(Token):
                     pass
                 else:
                     for name in ("sub", "endsub", "call"):
-                        name_size = len(name)
-                        name_end_index = index + name_size
-                        extracted_name = line[index:name_end_index].lower()
+                        name_size: int = len(name)
+                        name_end_index: int = index + name_size
+                        extracted_name: str = line[index:name_end_index].lower()
                         # print("extracted_name='{0}'".format(extracted_name))
                         if name == extracted_name:
                             if name_end_index >= line_size or \
@@ -2160,13 +2158,12 @@ class OLetterToken(Token):
                     break
 
         # If *end_index* is positive, we have successfully matched:
-        token = None
+        o_letter_token: Optional[OLetterToken] = None
         if end_index >= 0:
             assert number_start >= 0 and number_end >= 0
-            assert isinstance(name, str)
-            value = int(line[number_start:number_end])
-            token = OLetterToken(end_index, value, name)
-        return token
+            value: int = int(line[number_start:number_end])
+            o_letter_token = OLetterToken(end_index, value, name)
+        return o_letter_token
 
     # OLetterToken.number_get():
     def number_get(self) -> Number:
@@ -2214,29 +2211,32 @@ class OLetterToken(Token):
         terminators: List[str] = ["", " ", "(", "["]
         termiantor: str
         for terminator in terminators:
-            full_line = line + terminator
-            token = OLetterToken.match(full_line, 0)
-            assert isinstance(token, OLetterToken), f"'{full_line}' should not have failed"
-            assert token.end_index == len(line)
-            assert token.routine_number == routine_number
-            assert token.keyword == keyword
+            full_line: str = line + terminator
+            o_letter_token: Optional[OLetterToken] = OLetterToken.match(full_line, 0)
+            assert isinstance(o_letter_token, OLetterToken), f"'{full_line}' should not have failed"
+            assert o_letter_token.end_index == len(line)
+            assert o_letter_token.routine_number == routine_number
+            assert o_letter_token.keyword == keyword
         return True
 
 
+# Run this code from the command line:
 if __name__ == "__main__":
-    rs274 = RS274()
+    # Create and initialize *rs274*:
+    rs274: RS274 = RS274()
     rs274.groups_create()
     rs274.token_match_tests()
 
-    file_names = sys.argv[1:]
+    # Extract *file_names* from the command line arguments:
+    file_names: List[str] = sys.argv[1:]
 
-    print("Final commands list:")
+    # Process each *file_name* in *file_names*:
     file_name: str
     for file_name in file_names:
         print("file_name='{0}'".format(file_name))
         with open(file_name, "r") as in_file:
-            content = in_file.read()
-            commands = RS274.content_parse(content)
+            content: str = in_file.read()
+            commands: List[Command] = RS274.content_parse(content)
             commands = RS274.n_remove(commands)
             commands = RS274.g28_remove(commands)
             commands = RS274.g91_remove(commands)
