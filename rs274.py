@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""RS274 implements an RS274 parser for CNC pre/post-processors."""
 # <---------------------------------------- 100 characters --------------------------------------> #
 
 import sys
@@ -6,10 +7,10 @@ import math
 import os
 
 # Import some types for type hints:
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 Number = Union[float, int]
-NullStr = Union[None, str]
 Error = str
+
 
 # FreeCad Path documentation:
 # https://www.freecadweb.org/wiki/Path_scripting
@@ -33,80 +34,7 @@ Error = str
 # * https://medium.com/@ageitgey/
 #      learn-how-to-use-static-type-checking-in-python-3-6-in-10-minutes-12c86d72677b
 # * http://google.github.io/styleguide/pyguide.html
-
-
-# Forward class declartions that will be overridden further below:
-class BracketToken:
-    """Forward definition of BracketToken class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class CommentToken:
-    """Forward definition of CommentToken class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class Command:
-    """Forward definition of Command class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class Group:
-    """Forward definition of Group class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class LetterToken:
-    """Forward definition of LetterToken class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class RS274:
-    """Forward definition of RS274 class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class OLetterToken:
-    """Forward definition of OLetterToken class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class Template:
-    """Forward definition of Template class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
-
-class Token:
-    """Forward definition of Token class."""
-
-    def __init__(self):
-        """Bogus __init__ method."""
-        assert False, "Forward class definition accidentally used."
-
+# * https://realpython.com/python-virtual-environments-a-primer/
 
 # Command:
 class Command:
@@ -119,7 +47,7 @@ class Command:
     """
 
     # Command.__init__():
-    def __init__(self: Command, name: str, parameters: Union[Dict[str, Number], None] = None):
+    def __init__(self, name: str, parameters: Optional[Dict[str, Number]] = None):
         """Initialize a *Command* with a name and optional parameters.
 
         Arguments:
@@ -136,15 +64,16 @@ class Command:
 
         # Create an empty *parameters* dictionary if needed:
         if parameters is None:
-            parameters: Dict[str, Number] = dict()
+            parameters = dict()
 
         # Stuff arguments into *command* (i.e. *self*):
         command: Command = self
-        command.Name = name
-        command.Parameters = parameters
+        self.Name: str = name
+        self.Parameters: Dict[str, Number] = dict() if parameters is None else parameters
+        command = command
 
     # Command.__str__():
-    def __str__(self: Command) -> str:
+    def __str__(self) -> str:
         """Return a string reprentation of a *Command*."""
         # Grab some values from *command* (i.e. *self*):
         command: Command = self
@@ -153,6 +82,8 @@ class Command:
 
         # Create a sorted list of *parameters_strings*:
         parameters_strings: List[str] = list()
+        letter: str
+        number: Number
         for letter, number in parameters.items():
             parameters_strings.append(f"{letter}{number}")
         parameters_strings.sort()
@@ -168,7 +99,7 @@ class Group:
     """Represents a group of releated Template objects."""
 
     # Group.__init__():
-    def __init__(self: Group, rs274: RS274, short_name: str, title: str):
+    def __init__(self, rs274: "RS274", short_name: str, title: str):
         """Initialize the a Group object.
 
         Arguments:
@@ -187,14 +118,15 @@ class Group:
 
         # Stuff arguments into *group* (i.e. *self*):
         group: Group = self
-        group.templates = dict()
-        group.title = title
-        group.rs274 = rs274
-        group.short_name = short_name
-        group.key = -1
+        self.key: int = -1
+        self.templates: Dict[str, Template] = dict()
+        self.title: str = title
+        self.rs274: RS274 = rs274
+        self.short_name: str = short_name
+        group = group
 
     # Group.g_code():
-    def g_code(self: Group, name: str, parameters: str, title: str):
+    def g_code(self, name: str, parameters: str, title: str):
         """Create an named G code Template with parameters and title.
 
         Arguments:
@@ -216,12 +148,12 @@ class Group:
             assert False, f"'{name[1:]}' is not a number"
 
         # Create *g_code_template and register it with *group* (i.e. *self*):
-        g_code_template = Template(name, parameters, title)
+        g_code_template: Template = Template(name, parameters, title)
         group: Group = self
         group.template_register(g_code_template)
 
     # Group.m_code():
-    def m_code(self: Group, name: str, parameters: str, title: str):
+    def m_code(self, name: str, parameters: str, title: str):
         """Create a named M code Template with parameters and title.
 
         Arguments:
@@ -255,7 +187,7 @@ class Group:
         # print(f"m_code_template={m_code_template}")
 
     # Group.letter_code():
-    def letter_code(self: Group, letter: str, title: str):
+    def letter_code(self, letter: str, title: str):
         """Create a letter code Template with a title.
 
         Arguments:
@@ -268,12 +200,13 @@ class Group:
         assert len(letter) == 1 and letter.isalpha() and letter.isupper()
         assert isinstance(title, str)
 
+        # Register *letter_template* with *group* (i.e. *self*):
         group: Group = self
         letter_template: Template = Template(letter, "", title)
         group.template_register(letter_template)
 
     # Group.template_register():
-    def template_register(self: Group, template: Template):
+    def template_register(self, template: "Template"):
         """Register a new template with with group.
 
         Arguments:
@@ -287,7 +220,7 @@ class Group:
         group: Group = self
         group_templates: Dict[str, Template] = group.templates
         rs274: RS274 = group.rs274
-        parameter_letters: Dict[str, Token] = rs274.parameter_letters
+        parameter_letters: Dict[str, Number] = rs274.parameter_letters
         templates_table: Dict[str, Template] = rs274.templates_table
         groups_table: Dict[str, Group] = rs274.groups_table
 
@@ -298,6 +231,7 @@ class Group:
         groups_table[name] = group
 
         parameters: Dict[str, Number] = template.parameters
+        parameter: str
         for parameter in parameters.keys():
             if len(parameter) == 1 and parameter.isalpha() and parameter.isupper():
                 parameter_letters[parameter] = 0
@@ -321,31 +255,32 @@ class RS274:
     # TYPE_TIME      = 5  # A time messured in seconds
 
     # RS274:__init__():
-    def __init__(self: RS274):
+    def __init__(self):
         """Initialize the RS274 object."""
         # Load some values into *rs274* (i.e. *self*):
-        rs274 = self
-        rs274.comment_group = None        # *Group* for comments (e.g. "( ... )")
-        rs274.group_table = dict()        # Command name (e.g. "G0") to associated *Group*"
-        rs274.groups_list = list()        # *Group*'s list in execution order
-        rs274.groups_list_keyed = False   # *True* if all groups assigned a sort key
-        rs274.groups_table = dict()       # *Group*'s table keyed with short name
-        rs274.line_number_group = None    # *Group* for N codes.
-        rs274.motion_command_name = None  # Name of last motion command (or *None*)
-        rs274.motion_group = None         # The motion *Group* is special
-        rs274.parameter_letters = dict()  # For testing, collect all template parameters.
-        rs274.templates_table = dict()    # Command name (e.g. "G0") to *Template*.
-        rs274.variables = dict()          # Unclear if this is needed....
-        rs274.white_space = " \t"         # White space characters for tokenizing
-        rs274.token_match_routines = (    # The ordered token match routines
+        rs274: RS274 = self
+        self.comment_group: Optional[str] = None      # *Group* for comments (e.g. "( ... )")
+        self.group_table: Dict[str, Group] = dict()   # Command name (e.g. "G0") for assoc. *Group*"
+        self.groups_list: List[Group] = list()        # *Group*'s list in execution order
+        self.groups_list_keyed: List[Group] = False   # *True* if all groups assigned a sort key
+        self.groups_table: Dict[str, Group] = dict()  # *Group*'s table keyed with short name
+        self.line_number_group: Optional[Group] = None  # *Group* for N codes.
+        self.motion_command_name: Optional[str] = None  # Name of last motion command (or *None*)
+        self.motion_group: Optional[Group] = None       # The motion *Group* is special
+        self.parameter_letters: Dict[str, Number] = dict()  # For test, collect all template params.
+        self.templates_table: Dict[str, Template] = dict()  # Command name (e.g. "G0") to *Template*
+        self.variables: Dict[str, None] = dict()        # Unclear if this is needed....
+        self.white_space: str = " \t"                   # White space characters for tokenizing
+        self.token_match_routines: Tuple(callable) = (  # The ordered token match routines
             OLetterToken.match,
             LetterToken.match,
             CommentToken.match,
             BracketToken.match
         )
+        rs274 = rs274
 
     # RS274.assign_group_keys()
-    def assign_group_keys(self: RS274):
+    def assign_group_keys(self):
         """Ensure that every Group has a valid key."""
         # Do nothing if *groups_list_keyed* is already set.  Any modifications to
         # the grouops of *rs274* (i.e. *self*) will reset *groups_list_keyed*:
@@ -355,6 +290,8 @@ class RS274:
             # Sweep through *groups_list* and set the key attribute for each *group*:
             groups_list: List[Group] = rs274.groups_list
             assert isinstance(groups_list, list)
+            index: int
+            group: Group
             for index, group in enumerate(groups_list):
                 group.key = index
 
@@ -363,20 +300,19 @@ class RS274:
 
     # RS274:commands_and_unused_tokens_extract():
     @staticmethod
-    def commands_and_unused_tokens_extract(tokens: List[Token],
-                                           tracing: NullStr = None) -> (List[Command],
-                                                                        List[Error],
-                                                                        List[Token]):
+    def commands_and_unused_tokens_extract(tokens: "List[Token]",
+                                           tracing: Optional[str] = None) -> Tuple[
+                                               List[Command],
+                                               "List[Token]"]:
         """Split tokens into commands and tokens.
 
         Arguments:
             tokens (List[Token]): List to tokens to process.
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optionial[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         Returns:
             List[Command]: A list of commands extracted.
-            List[Error]: A list of errors encounterd.
             List[Token]: A list of unused Token's.
 
         """
@@ -386,21 +322,23 @@ class RS274:
 
         # Perform any requested *tracing*:
         # next_tracing = None if tracing is None else tracing + " "
+        tokens_text: str = ""
         if tracing is not None:
-            tokens_text: str = RS274.tokens_to_text(tokens)
+            tokens_text = RS274.tokens_to_text(tokens)
             print(f"{tracing}=>RS274.commands_and_unused_tokens_extract({tokens_text}, *)")
 
         # Sweep through *tokens* splitting them into *commands* and *unused_tokens* and
         # collecting *errors* as we go:
         commands: List[Command] = list()
         unused_tokens: List[Token] = list()
+        token: Token
         for token in tokens:
             token.catagorize(commands, unused_tokens)
 
         # Wrap up any requested *tracing* and return both *commands* and *unused_tokens*:
         # next_tracing = None if tracing is None else tracing + " "
         if tracing is not None:
-            tokens_text: str = RS274.tokens_to_text(tokens)
+            tokens_text = RS274.tokens_to_text(tokens)
             commands_text: str = RS274.commands_to_text(commands)
             unused_tokens_text: str = RS274.tokens_to_text(unused_tokens)
             print(f"{tracing}<=RS274.commands_and_unused_tokens_extract({tokens_text}, *)"
@@ -417,17 +355,17 @@ class RS274:
         return '[' + "; ".join(f"{command}" for command in commands) + ']'
 
     # RS274.commands_from_tokens():
-    def commands_from_tokens(self: RS274,
-                             tokens: List[Token],
-                             tracing: NullStr = None) -> (List[Command],
-                                                          List[Error],
-                                                          List[Token],
-                                                          str):
+    def commands_from_tokens(self,
+                             tokens: "List[Token]",
+                             tracing: Optional[str] = None) -> Tuple[List[Command],
+                                                                     List[Error],
+                                                                     "List[LetterToken]",
+                                                                     Optional[str]]:
         """Return the commands extracted from tokens.
 
         Arguments:
             tokens (List[Token]): The tokens to process.
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optionial[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         Returns:
@@ -440,45 +378,59 @@ class RS274:
         # Verify argument types:
         assert isinstance(tokens, list)
         assert isinstance(tracing, str) or tracing is None
+        token: Token
         for token in tokens:
             assert isinstance(token, Token), f"token={token} tokens={tokens}"
 
+        # Define some variables to make `mypy` happy:
+        unused_tokens_text: str = ""
+        tokens_text: str = ""
+        commands_text: str = ""
+
         # Perform any requested *tracing*:
-        next_tracing: Union[str, None] = None if tracing is None else tracing + " "
+        next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
-            tokens_text: str = RS274.tokens_to_text(tokens)
+            tokens_text = RS274.tokens_to_text(tokens)
             print(f"{tracing}=>RS274.commands_from_tokens('{tokens_text}')")
 
         # First partition *tokens* into *commands* and *unused_tokens* using *rs274* (i.e. *self*).
         # Tack any *extraction_errors* onto *errors*:
         rs274: RS274 = self
+        commands: List[Command]
+        unused_tokens: List[Token]
         commands, unused_tokens = \
             RS274.commands_and_unused_tokens_extract(tokens, tracing=next_tracing)
 
         # Fill up *unused_tokens_table* with each *unused_token* appending any *duplication_errors*
         # onto *errors*:
-        errors: List[str] = list()
+        unused_tokens_table: Dict[str, LetterToken]
+        duplications_errors: List[Error]
         unused_tokens_table, duplication_errors = RS274.table_from_tokens(unused_tokens)
+        errors: List[Error] = list()
         errors.extend(duplication_errors)
 
         # Flag when two or more *commands* are in the same group:
+        conflict_errors: List[str]
+        motion_command_name: Optional[str]
         conflict_errors, motion_command_name = RS274.group_conflicts_detect(commands)
         errors.extend(conflict_errors)
 
         # Determine which *commands* want to use which *unused_tokens* using *unused_tokens_table*
         # and *letter_commands_table*.  The updated (and hopefully empty) *unused_tokens* list
         # is returned:
+        bind_errors: List[Error]
+        unused_letter_tokens: List[LetterToken]
         letter_commands_table: Dict[str, List[Command]] = (
           RS274.letter_commands_table_create(unused_tokens_table, commands, tracing=next_tracing))
-        unused_tokens, bind_errors = RS274.tokens_bind_to_commands(letter_commands_table,
-                                                                   unused_tokens_table,
-                                                                   tracing=next_tracing)
+        unused_letter_tokens, bind_errors = RS274.tokens_bind_to_commands(letter_commands_table,
+                                                                          unused_tokens_table,
+                                                                          tracing=next_tracing)
         errors.extend(bind_errors)
 
         # Perform any requested *tracing*:
         if tracing is not None:
-            commands_text: str = RS274.commands_to_text(commands)
-            unused_tokens_text: str = RS274.tokens_to_text(unused_tokens)
+            commands_text = RS274.commands_to_text(commands)
+            unused_tokens_text = RS274.tokens_to_text(unused_tokens)
             print(f"{tracing}commands={commands_text} unused_tokens='{unused_tokens_text}'")
 
         # Sort the *commands* based on the *Group* key associated with the *command* name:
@@ -489,22 +441,22 @@ class RS274:
 
         # Wrap up any requested *tracing* and return results:
         if tracing is not None:
-            commands_text: str = RS274.commands_to_text(commands)
-            tokens_text: str = RS274.tokens_to_text(tokens)
-            unused_tokens_text: str = RS274.tokens_to_text(unused_tokens)
+            commands_text = RS274.commands_to_text(commands)
+            tokens_text = RS274.tokens_to_text(tokens)
+            unused_tokens_text = RS274.tokens_to_text(unused_tokens)
             print(f"{tracing}<=RS274.commands_from_tokens('{tokens_text}')"
                   f"=>{commands_text}, *, '{unused_tokens_text}', '{motion_command_name}'")
-        return commands, errors, unused_tokens, motion_command_name
+        return commands, errors, unused_letter_tokens, motion_command_name
 
     # RS274.content_parse():
     @staticmethod
-    def content_parse(content: str, tracing: NullStr = None) -> List[Command]:
+    def content_parse(content: str, tracing: Optional[str] = None) -> List[Command]:
         """Parse an RS274 content and return resulting Command's.
 
         Arguments:
             content (str): The entire file content with lines
                 separated by new-line character.
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optional[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         Returns:
@@ -516,32 +468,42 @@ class RS274:
         assert isinstance(tracing, str) or tracing is None
 
         # Perform any requested *tracing*:
-        next_tracing: Union[str, None] = None if tracing is None else tracing + " "
+        next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
             print(f"{tracing}=>RS274.content_parse(*, '...') ")
 
         # Split *content* into *blocks* (i.e. lines) and parse them into *commands* that
         # are appended to *command_list*:
         lines = content.split('\n')
-        commands_list: List[Command] = list()
+        commands_list: List[List[Command]] = list()
+        line_index: int
+        line: str
         for line_index, line in enumerate(lines):
             # Parse *block* into *commands*:
-            next_tracing: Union[str, None] = "" if -1 <= line_index <= -1 else None
-            commands, parse_errors = rs274.line_parse(line, tracing=next_tracing)
-            commands_list.append(commands)
+            rs274_commands: Optional[List[Command]]
+            parse_errors: List[Error]
+            rs274_commands, parse_errors = rs274.line_parse(line, tracing=next_tracing)
+            if rs274_commands is not None:
+                commands_list.append(rs274_commands)
 
             # Print out any errors:
             if len(parse_errors) >= 1 or next_tracing is not None:
                 print("Line[{0}]='{1}'".format(line_index, line.strip('\r\n')))
 
                 # Print the *errors*:
+                error_index: int
+                error: Error
                 for error_index, error in enumerate(parse_errors):
                     print(f" Error[{error_index}]:'{error}'")
 
                 # Dump the *commands*:
-                for index, command in enumerate(commands):
-                    assert isinstance(command, Command)
-                    print(f" Command[{index}]:{command}")
+                if isinstance(rs274_commands, list):
+                    commands: List[Command] = rs274_commands
+                    command: Command
+                    index: int
+                    for index, command in enumerate(commands):
+                        assert isinstance(command, Command)
+                        # print(f" Command[{index}]:{command}")
 
                 print("")
 
@@ -571,6 +533,7 @@ class RS274:
 
         # Write *commands* out to *file_name*
         with open(file_name, "w") as out_file:
+            command: Command
             for command in commands:
                 out_file.write(f"{command}\n")
 
@@ -587,26 +550,25 @@ class RS274:
                 canned cylces replaced with G0/G1 commands.
 
         """
-        # Verify argument types:
-        assert isinstance(commands, list)
-
-        retract_mode: NullStr = None
+        # Start ...
+        nan = float("nan")  # Not A Number
+        retract_mode: Optional[str] = None
         updated_commands: List[Command] = list()
         variables: Dict[str, Number] = dict()
+        command: Command
         for command in commands:
             # Unpack *command*:
             name: str = command.Name
             parameters: Dict[str, Number] = command.Parameters
 
             # Update *variables*:
+            key: str
+            value: Number
             for key, value in parameters.items():
                 if key == 'Z' and name in ("G82", "G83"):
-                    if value < variables['Z']:
-                        variables['Zdepth'] = value
-                    else:
-                        variables['Zdepth'] = None
-                else:
-                    variables[key] = value
+                    variables['Zdepth'] = (value if 'Z' in variables and value < variables['Z']
+                                           else nan)
+                variables[key] = value
 
             if name in ("G98", "G99"):
                 retract_mode = name
@@ -618,16 +580,16 @@ class RS274:
                 # Extract the needed values from *parameters* and *varibles*:
                 # l = parameters['L'] if 'L' in parameters else (
                 #    variables['L'] if 'L' in variables else None)
-                p = parameters['P'] if 'P' in parameters else (
-                    variables['P'] if 'P' in parameters else None)
-                q = parameters['Q'] if 'Q' in parameters else (
-                    variables['Q'] if 'Q' in variables else None)
-                r = parameters['R'] if 'R' in parameters else (
-                    variables['R'] if 'R' in variables else None)
-                x = parameters['X'] if 'X' in parameters else variables['X']
-                y = parameters['Y'] if 'Y' in parameters else variables['Y']
-                z_depth = variables['Zdepth']
-                z = variables['Z']
+                p: float = (parameters['P'] if 'P' in parameters
+                            else (variables['P'] if 'P' in variables else nan))
+                q: float = (parameters['Q'] if 'Q' in parameters
+                            else (variables['Q'] if 'Q' in variables else nan))
+                r: float = (parameters['R'] if 'R' in parameters else
+                            (variables['R'] if 'R' in variables else nan))
+                x: float = parameters['X'] if 'X' in parameters else variables['X']
+                y: float = parameters['Y'] if 'Y' in parameters else variables['Y']
+                z_depth: float = variables['Zdepth']
+                z: float = variables['Z']
 
                 # Provide *comment_command* to show all of the parameters used for the
                 # drilling cycle:
@@ -640,7 +602,7 @@ class RS274:
                 updated_commands.append(Command("G0", {'X': x, 'Y': y}))
 
                 # Only drill if *z_depth*, *r* and *z* are rational:
-                if z_depth is not None and z_depth < r <= z:
+                if not math.isnan(z_depth) and z_depth < r <= z:
                     # Dispatch on *name*:
                     if name == "G82":
                         # Simple drilling cycle:
@@ -653,7 +615,7 @@ class RS274:
                         updated_commands.append(Command("G1", {'Z': z_depth}))
 
                         # Do a dwell if *p* exists and is positive:
-                        if p is not None and p > 0.0:
+                        if not math.isnan(p) and p > 0.0:
                             updated_commands.append(Command("G4", {'P': p}))
 
                         # Rapid out of the hole to the correct retract height based
@@ -662,15 +624,16 @@ class RS274:
                         updated_commands.append(Command("G0", {'Z': retract_z}))
                     elif name == "G83":
                         # Keep pecking down until we get drilled down to *z_depth*:
-                        delta = q / 10.0
-                        drill_z = z
-                        peck_index = 0
+                        delta: float = q / 10.0
+                        drill_z: float = z
+                        peck_index: int = 0
                         while drill_z > z_depth:
                             # Rapid (i.e. `G0`) down to *rapid_z*, where *rapid_z* will
                             # be at *r* on the first iteration, and multiples of *q* lower
                             # on subsequent iterations.  The *delta* offset enusures that
                             # the drill bit does not rapid into the hole bottom:
-                            rapid_z = r - (peck_index * q) + (0.0 if peck_index == 0 else delta)
+                            rapid_z: float = (r - (peck_index * q) + (0.0 if peck_index == 0
+                                                                      else delta))
                             updated_commands.append(Command("G0", {'Z': rapid_z}))
 
                             # Drill (i.e. `G1`) down to *drill_z*, where *drill_z* is a
@@ -680,7 +643,7 @@ class RS274:
                             updated_commands.append(Command("G1", {'Z': drill_z}))
 
                             # Pause at the bottom of the hole if *p* is specified:
-                            if p is not None and p > 0:
+                            if not math.isnan(p) and p > 0:
                                 updated_commands.append(Command("G4", {'P': p}))
 
                             # Retract all the way back to *r*:
@@ -698,8 +661,8 @@ class RS274:
             elif False and name in ("G0", "G43", "F18.0"):
                 x = parameters['X'] if 'X' in parameters else variables['X']
                 y = parameters['Y'] if 'Y' in parameters else variables['Y']
-                z = parameters['Z'] if 'Z' in parameters else (
-                    variables['Z'] if 'Z' in variables else None)
+                z = (parameters['Z'] if 'Z' in parameters else (
+                     variables['Z'] if 'Z' in variables else nan))
                 comment_command = Command(f"( {name} X:{x} Y:{y} Z:{z} )")
                 updated_commands.append(comment_command)
                 updated_commands.append(command)
@@ -744,7 +707,7 @@ class RS274:
 
     # RS274.group_conflicts_detect()
     @staticmethod
-    def group_conflicts_detect(commands: List[Command]) -> (List[Error], str):
+    def group_conflicts_detect(commands: List[Command]) -> Tuple[List[Error], Optional[str]]:
         """Detect group conflicts in a list of Command's.
 
         Arguments:
@@ -757,6 +720,7 @@ class RS274:
         """
         # Verify argument types:
         assert isinstance(commands, list)
+        command: Command
         for command in commands:
             assert isinstance(command, Command)
 
@@ -767,25 +731,26 @@ class RS274:
 
         # Sweep through *commands* using *duplicates_table* to find commands that conflict with
         # one another because they are in the same *Group*:
-        duplicates_table = dict()
-        errors = list()
-        motion_command_name = None
-        g80_found = False
+        duplicates_table: Dict[str, Command] = dict()
+        errors: List[Error] = list()
+        motion_command_name: Optional[str] = None
+        g80_found: bool = False
         for command in commands:
             # Grab values from *command*:
-            name = command.Name
-            letter = name[0]
+            name: str = command.Name
+            letter: str = name[0]
             if name == "G80":
                 g80_found = True
 
             # Find the *group* associated with *command*, or fail trying:
+            group: Optional[Group]
             if name in groups_table:
                 group = groups_table[name]
             elif letter in groups_table:
                 group = groups_table[letter]
             else:
                 # This should not happen:
-                error = f"'{name}' has no associated group"
+                error: Error = f"'{name}' has no associated group"
                 errors.append(error)
                 group = None
 
@@ -812,7 +777,7 @@ class RS274:
         return errors, motion_command_name
 
     # RS274.group_create():
-    def group_create(self: RS274, short_name: str, title: str, before: str = "") -> Group:
+    def group_create(self, short_name: str, title: str, before: str = "") -> Group:
         """Create a new named group.
 
         Arguments:
@@ -858,7 +823,7 @@ class RS274:
         return group
 
     # RS724.groups_create():
-    def groups_create(self: RS274):
+    def groups_create(self):
         """Create all of the needed groups."""
         # Grab the *groups* object from *rs274* (i.e. *self*):
         rs274 = self
@@ -1062,15 +1027,19 @@ class RS274:
         assert isinstance(groups, list)
         assert isinstance(label, str)
         print(label)
+        index: int
+        group: Group
         for index, group in enumerate(groups):
-            assert isinstance(group, Group)
-            print("[{0}]:{1}".format(index, [code.key for code in group.codes]))
+            templates: Dict[str, Template] = group.templates
+            name: str
+            template_text: str = ",".join(templates.keys())
+            print(f"[{index}]:{group.short_name}({template_text})")
 
     # RS274.letter_commands_table_create():
     @staticmethod
-    def letter_commands_table_create(unused_tokens_table: Dict[str, LetterToken],
+    def letter_commands_table_create(unused_tokens_table: "Dict[str, LetterToken]",
                                      commands: List[Command],
-                                     tracing: NullStr = None) -> Dict[str, List[Command]]:
+                                     tracing: Optional[str] = None) -> Dict[str, List[Command]]:
         """Return a table used for token to command binding.
 
         Arguments:
@@ -1079,7 +1048,7 @@ class RS274:
                 (e.g key=letter_token.letter).
             commands (List[Command]): A list of commands to bind to the
                 tokens.
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optionial[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         Returns:
@@ -1094,14 +1063,16 @@ class RS274:
 
         # Perform any requested *tracing*:
         if tracing is not None:
-            unused_tokens_text = RS274.tokens_to_text(list(unused_tokens_table.values()))
-            commands_text = RS274.commands_to_text(commands)
+            unused_tokens_text: str = RS274.tokens_to_text(list(unused_tokens_table.values()))
+            commands_text: str = RS274.commands_to_text(commands)
             print(f"{tracing}=>RS274.letter_commands_table_create("
                   f"{unused_tokens_text}, {commands_text})")
 
         # Start filling up *letter_template_table*:
-        letter_commands_table = dict()
-        templates_table = rs274.templates_table
+        letter_commands_table: Dict[str, List[Command]] = dict()
+        templates_table: Dict[str, Template] = rs274.templates_table
+        letter_index: int
+        letter: str
         for letter_index, letter in enumerate(unused_tokens_table.keys()):
             # Perform any requested *tracing*:
             assert isinstance(letter, str)
@@ -1111,6 +1082,8 @@ class RS274:
 
             # Now sweep through *commands* trying to figure out which command wants which
             # unused token:
+            command_index: int
+            command: Command
             for command_index, command in enumerate(commands):
                 # Unpack *command*:
                 assert isinstance(command, Command)
@@ -1126,6 +1099,8 @@ class RS274:
                     #     print(f"{tracing}  Template[{command_index}]:{template}")
 
                     # Register *command* is needing *template_letter* from *template*:
+                    template_index: int
+                    template_letter: str
                     for template_index, template_letter in enumerate(template.parameters.keys()):
                         assert isinstance(template_index, int)
                         # if tracing is not None:
@@ -1142,6 +1117,7 @@ class RS274:
             unused_tokens_text = RS274.tokens_to_text(list(unused_tokens_table.values()))
             commands_text = RS274.commands_to_text(commands)
             pairs = list()
+            sub_commands: List[Command]
             for letter, sub_commands in letter_commands_table.items():
                 sub_commands_text = RS274.commands_to_text(sub_commands)
                 pairs.append(f"'{letter}': {sub_commands_text}")
@@ -1152,21 +1128,21 @@ class RS274:
         return letter_commands_table
 
     # RS274:line_parse():
-    def line_parse(self: RS274, line: str,
-                   tracing: NullStr = None) -> (List[Command], List[Error]):
+    def line_parse(self, line: str,
+                   tracing: Optional[str] = None) -> Tuple[Optional[List[Command]], List[Error]]:
         """Parse one line of CNC code into a list of commands.
 
         Args:
             line (str): The line of CNC code to parse. There
                 be no trailing new-line character.
-            tracing: (NullStr): Either *None* for no tracing, or a
+            tracing: (Optionial[str]): Either *None* for no tracing, or a
                 tracing indentation string (usually a string of spaces.)
 
         Returns:
             commands (List[Command]): A list of *Command*'s for each
                 CNC command in *block*.  This returned list is empty if there
                 are no commands.
-            errors (List[str]): A list of error strings.
+            errors (List[Error]): A list of error strings.
 
         """
         # Verify argument types:
@@ -1174,18 +1150,18 @@ class RS274:
         assert isinstance(tracing, str) or tracing is None
 
         # Perform any requested *tracing*:
-        next_tracing: NullStr = None if tracing is None else tracing + " "
+        next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
             print(f"{tracing}=>RS274.line_parse('{line}', *)")
 
         # Start with *final_codes* set to *None*.  Only override *final_commands* with a list
         # of *Command*'s if there are no errors and no unused tokens:
         errors: List[Error] = list()
-        final_commands: List[Command] = None
+        final_commands: List[Command] = list()
 
         # Grab *motion_command_name* from *rs274*; it will be stuffed back into *rs274* later:
         rs274 = self
-        motion_command_name: str = rs274.motion_command_name
+        motion_command_name: Optional[str] = rs274.motion_command_name
         assert isinstance(motion_command_name, str) or motion_command_name is None
         if tracing is not None:
             print(f"{tracing}before: motion_command_name='{motion_command_name}'")
@@ -1194,6 +1170,7 @@ class RS274:
         tokens, tokenize_errors = rs274.line_tokenize(line)
         errors.extend(tokenize_errors)
 
+        token: Token
         for token in tokens:
             if isinstance(token, LetterToken) and token.letter == 'G' and token.number == 80:
                 motion_command_name = "G0"
@@ -1201,8 +1178,8 @@ class RS274:
 
         # We only continue with the parsing if there were no *errors* tokenizing *block*:
         if len(errors) >= 1:
-            # We did not get very far, so just set *final_codes* to an empty list return it:
-            final_commands: List[Command] = list()
+            # We did not get very far, so just set *final_commands* to an empty list return it:
+            final_commands = list()
         else:
             # Now we try to parse *tokens* into a list of *final_codes*.  First we try it
             # without adding on a "sticky" motion G command.  If that fails, we try to add
@@ -1216,7 +1193,7 @@ class RS274:
             # If there are no errors and no unused tokens, we have succeeded:
             if not errors1 and not unused_tokens1:
                 # We have have succeeded.  Update both *final_codes* and *motion_command_name*:
-                final_commands: List[Command] = commands1
+                final_commands = commands1
                 if motion_command_name1 is not None:
                     # print(f"setting motion_command_name={motion_command_name}")
                     motion_command_name = motion_command_name1
@@ -1296,7 +1273,7 @@ class RS274:
         return final_commands, errors
 
     # RS274:line_tokenize():
-    def line_tokenize(self: RS274, line: str) -> (List[Token], List[Error]):
+    def line_tokenize(self, line: str) -> "Tuple[List[Token], List[Error]]":
         """Convert line of G code into Token's.
 
         Arguments:
@@ -1328,9 +1305,10 @@ class RS274:
                 # Search for a *token* by sequentially invoking each *match_routine* in
                 # *match_routines*:
                 matched: bool = False
-                token: Union[Token, None] = None
+                token: Optional[Token] = None
+                match_routine: Callable[[str, int], Token]
                 for match_routine in match_routines:
-                    token: Token = match_routine(line, index)
+                    token = match_routine(line, index)
                     if isinstance(token, Token):
                         # We have a match, so remember *token*:
                         matched = True
@@ -1357,7 +1335,7 @@ class RS274:
 
     # RS274.table_from_tokens():
     @staticmethod
-    def table_from_tokens(tokens: List[Token]) -> (Dict[str, Token], List[Error]):
+    def table_from_tokens(tokens: "List[Token]") -> "Tuple[Dict[str, LetterToken], List[Error]]":
         """Convert tokens into a dict with list duplicate errors list.
 
         Arguments:
@@ -1365,30 +1343,20 @@ class RS274:
 
         Returns:
             Dict[str, Token]: The token dictionary keyed on token name/letter.
-            List[Error]: List of duplicate errors.
+            List[Error]: List of errors.
 
         """
         # Verify argument types:
         assert isinstance(tokens, list)
-        for token in tokens:
-            assert isinstance(token, LetterToken)
 
         # Fill up *tokens_table* with each *token* checking for duplicates:
-        errors = list()
-        tokens_table = dict()
+        errors: List[Error] = list()
+        letter_tokens_table: Dict[str, LetterToken] = dict()
         for token in tokens:
-            # Unpack *token*:
-            letter = token.letter
+            token.recatagorize(letter_tokens_table, errors)
 
-            # Stuff *token* into *tokens_table* (or generate an *error*):
-            if letter in tokens_table:
-                error = f"Parameter '{letter}' occurs more than once in block (i.e. line.)"
-                errors.append(error)
-            else:
-                tokens_table[letter] = token
-
-        # Return *tokens_table* and *errors*:
-        return tokens_table, errors
+        # Return *letter_tokens_table* and *errors*:
+        return letter_tokens_table, errors
 
     # RS274.token_match_tests():
     @staticmethod
@@ -1402,15 +1370,16 @@ class RS274:
     # RS274.tokens_bind_to_commands():
     @staticmethod
     def tokens_bind_to_commands(letter_commands_table: Dict[str, List[Command]],
-                                unused_tokens_table: Dict[str, Token],
-                                tracing: NullStr = None) -> (List[Token], List[Error]):
+                                unused_tokens_table: "Dict[str, LetterToken]",
+                                tracing: Optional[str] = None) -> ("Tuple[List[LetterToken],"
+                                                                   "List[Error]]"):
         """Merge unused tokens into pending commands.
 
         Arguments:
             letter_commands_table (Dict[str, List[Command]): A dict
                 of parameters keyed by parameter letter with values
                 list the Command's that use the parameter letter.
-            unused_tokens_table (Dict[str, Token)]: A dict of tokens
+            unused_tokens_table (Dict[str, LetterToken)]: A dict of tokens
                 keyed by parameter letter that are available for
                 binding to commands.
             tracing
@@ -1431,6 +1400,8 @@ class RS274:
         # Now sweep through *letter_commands_table* looking for *errors* and attaching
         # each appropriate *token* to a *command* (thereby making them used tokens):
         errors = list()
+        letter: str
+        letter_commands: List[Command]
         for letter, letter_commands in letter_commands_table.items():
             # Each *letter* in *letter_commands_table has an associated list of *Command*'s:
             assert isinstance(letter, str)
@@ -1443,23 +1414,24 @@ class RS274:
                 pass
             elif letter_commands_size == 1:
                 # Remove the *token* associated with *letter* from *unused_tokens_table*:
-                token = unused_tokens_table[letter]
+                token: LetterToken = unused_tokens_table[letter]
                 del unused_tokens_table[letter]
 
                 # Take the *token* value and put it into *command*:
-                command = letter_commands[0]
+                command: Command = letter_commands[0]
                 assert isinstance(command, Command)
-                parameters = command.Parameters
-                parameters[letter] = token.number
+                parameters: Dict[str, Number] = command.Parameters
+                parameters[letter] = token.number_get()
             elif letter_commands_size >= 2:
                 # We have a conflict, so we generate an *error*:
-                command_names = [command.Name for command in letter_commands]
-                conflicting_commands = ", ".join(command_names)
-                error = f"Commands '{conflicting_commands}' need to use the '{letter}' parameter"
+                command_names: List[str] = [command.Name for command in letter_commands]
+                conflicting_commands: str = ", ".join(command_names)
+                error: str = (f"Commands '{conflicting_commands}' need to use the "
+                              f"'{letter}' parameter")
                 errors.append(error)
 
         # Generate an updated list of *unused_tokens* from what is left in *unused_tokens_table*:
-        unused_tokens = list(unused_tokens_table.values())
+        unused_tokens: List[LetterToken] = list(unused_tokens_table.values())
 
         # Wrap up any requested *tracing* and return *unused_tokens* list with *errors*:
         if tracing is not None:
@@ -1481,8 +1453,8 @@ class Template:
     """Represents a G/M code that is a member of a Group."""
 
     # Template.__init__():
-    def __init__(self: Template, name: str, parameter_letters: str, title: str):
-        """Initialize a template with a name, title and parameters.
+    def __init__(self, name: str, parameter_letters: str, title: str):
+        """Initialize a template with a *name*, *parameter_letters* and *title*.
 
         Arguments:
             name (str): The name of the template M/G code (e.g. "G0",
@@ -1499,18 +1471,20 @@ class Template:
         assert isinstance(title, str)
 
         # Create a *parameters* dictionary and fill it in from *parameter_letters*:
-        parameters = dict()
+        parameters: Dict[str, Number] = dict()
+        parameter_letter: str
         for parameter_letter in parameter_letters:
             parameters[parameter_letter] = 0
 
         # Stuff arguments into *template* (i.e. *self*):
         template: Template = self
-        template.name = name
-        template.parameters = parameters
-        template.title = title
+        self.name: str = name
+        self.parameters: Dict[str, Number] = parameters
+        self.title: str = title
+        template = template
 
     # Template.__str__():
-    def __str__(self: Template) -> str:
+    def __str__(self) -> str:
         """Return a string representation of a Template."""
         # Grab some values from *template* (i.e. *self*):
         template: Template = self
@@ -1518,13 +1492,11 @@ class Template:
         parameters: Dict[str, Number] = template.parameters
         title: str = template.title
 
-        # Create a sorted list of *parameters_strings*:
-        parameters_letters = list(parameters.keys())
-        parameters_letters.sort()
+        # Create a *sorted_parameters_letters*:
+        sorted_parameters_letters = "".join(sorted(list(parameters.keys())))
 
         # Generate and return the final *result*:
-        parameters_letters_text = "".join(parameters_letters)
-        result: str = f"{name} '{parameters_letters_text}' '{title}'"
+        result: str = f"{name} '{sorted_parameters_letters}' '{title}'"
         return result
 
 
@@ -1533,13 +1505,13 @@ class Token:
     """Represent on token on a G-code line (e.g. "M7", "T1", "X3.1")."""
 
     # Token.__init__():
-    def __init__(self: Token, end_index: int, tracing: NullStr = None):
+    def __init__(self, end_index: int, tracing: Optional[str] = None):
         """Initialize a Token to have a position.
 
         Arguments:
             end_index (int) : The position in the line where the
                 token ends.
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optional[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         """
@@ -1553,19 +1525,20 @@ class Token:
 
         # Fill in the *token* object (i.e. *self*) from the routine arguments:
         token = self
-        token.end_index = end_index
+        self.end_index: int = end_index
+        token = token
 
         # Wrap up any requested *tracing*:
         if tracing is not None:
             print(f"{tracing}<=Token.__init__(*, {end_index})")
 
     # Token.__str__():
-    def __str__(self: Token):
+    def __str__(self) -> str:
         """Return text string for token."""
         return "?"
 
     # Token.catagorize():
-    def catagorize(self: Token, commands: List[Command], unused_tokens: List[Token]):
+    def catagorize(self, commands: List[Command], unused_tokens: "List[Token]"):
         """Place holder routine that fails."""
         # Verify argument types:
         assert isinstance(commands, list)
@@ -1575,19 +1548,48 @@ class Token:
         token = self
         assert False, f"No catagorize() method for {type(token)}"
 
+    # Token.letter_get():
+    def letter_get(self) -> str:
+        """Return the associated number value."""
+        token: Token = self
+        assert False, f"Token.letter_get(): {token.__class__.__name__}.get_number() dos not exist!"
+        return "Error"
+
+    # Token.number_get():
+    def number_get(self) -> Number:
+        """Return the associated number value."""
+        token: Token = self
+        assert False, f"Token.number_get(): {token.__class__.__name__}.get_number() dos not exist!"
+
+    # LetterToken.recatagorize():
+    def recatagorize(self, letter_tokens_table: "Dict[str, LetterToken]", errors: List[Error]):
+        """Sort token into either *letter_tokens_table* or and error.
+
+        Arguments:
+            letter_tokens_table (Dict[str, LetterToken]): The place to
+                store unique parameters keyed by parameter letter.
+            errors (List[Error]): An error list to append error
+                messages to.
+
+        """
+        # This method catches all non *LetterToken*'s and converts them into *errors*:
+        token: Token = self
+        error: Error = f"'{token}' is not a parameter"
+        errors.append(error)
+
 
 # BracketToken:
 class BracketToken(Token):
     """Represent a NIS RS274 indirect argument (e.g "[123.456]")."""
 
     # BracketToken.__init__():
-    def __init__(self: BracketToken, end_index: int, value: Number, tracing: NullStr = None):
+    def __init__(self, end_index: int, value: Number, tracing: Optional[str] = None):
         """Initialize a BracketToken to have a value.
 
         Arguments:
             end_index (int): The end position of token in the line.
             value (Number): The number value between the brackets.
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optional[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         """
@@ -1597,27 +1599,28 @@ class BracketToken(Token):
         assert isinstance(tracing, str) or tracing is None
 
         # Perform an requested *tracing*:
-        next_tracing = None if tracing is None else tracing + " "
+        next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
             print(f"{tracing}=>BracketToken.__init__(*, {end_index}, {value})")
 
         # Initialize the *token_bracket* (i.e. *self*):
-        token_bracket = self
+        bracket_token = self
         super().__init__(end_index, tracing=next_tracing)
-        token_bracket.value = value
+        self.value: Number = value
+        bracket_token = bracket_token
 
         # Wrap up any requested *tracing*:
         if tracing is not None:
             print(f"{tracing}=>BracketToken.__init__(*, {end_index}, {value})")
 
     # BracketToken.__str__():
-    def __str__(self: BracketToken):
+    def __str__(self) -> str:
         """Convert BracketToken to human readable string."""
         token_bracket = self
         return "[{0}]".format(token_bracket.value)
 
     # BracketToken.catagorize():
-    def catagorize(self: BracketToken, commands: List[Command], unused_tokens: List[Token]):
+    def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Catagorize the bracket token into unused tokens."""
         # Verify argument types:
         assert isinstance(commands, list)
@@ -1631,7 +1634,7 @@ class BracketToken(Token):
     @staticmethod
     def match(line: str,
               start_index: int,
-              tracing: NullStr = None) -> Union[BracketToken, None]:
+              tracing: Optional[str] = None) -> "Optional[BracketToken]":
         """Parse a BracketToken from line.
 
         Arguments:
@@ -1639,7 +1642,7 @@ class BracketToken(Token):
             start_index (int): The character position to start at.
 
         Returns:
-            Union[BracketToken, None]: The resulting BracketToken
+            Optional[BracketToken]: The resulting BracketToken
             or None if no match found.
 
         """
@@ -1655,25 +1658,26 @@ class BracketToken(Token):
 
         # Set *end_index* to index after the closing square bracket when we have succeeded.
         # If *end_index* is less than zero, we have not successfully matched a bracket token:
-        end_index = -1
+        end_index: int = -1
 
         # We must start with a '[':
-        line_size = len(line)
+        line_size: int = len(line)
         if line_size > 0 and line[start_index] == '[':
-            white_space = " \t"
-            have_decimal_point = False
-            have_digit = False
-            have_number = False
+            white_space: str = " \t"
+            have_decimal_point: bool = False
+            have_digit: bool = False
+            have_number: bool = False
 
             # *number_start* and *number_end* point to the character span of the number
             # excluding brackets and white space.  The span is only valid if both are positive:
-            number_start = -1
-            number_end = -1
+            number_start: int = -1
+            number_end: int = -1
 
             # Sweep across the remainder of *line* starting after the opening '[':
+            index: int
             for index in range(start_index + 1, len(line)):
                 # Dispatch on *character*:
-                character = line[index]
+                character: str = line[index]
                 if character in white_space:
                     # White space is allowed on both sides of the number between the square
                     # brackets.  What is not allowed is having more than one number between
@@ -1721,7 +1725,7 @@ class BracketToken(Token):
                     break
 
         # We have succecded when *end_index* is positive:
-        token = None
+        token: Optional[BracketToken] = None
         if end_index >= 0:
             token = BracketToken(end_index, float(line[number_start:number_end]))
 
@@ -1729,6 +1733,14 @@ class BracketToken(Token):
         if tracing is not None:
             print("{tracing}<=BracketToken.match('{line}', {start_index2})=>{token}")
         return token
+
+    # BracketToken.number_get():
+    def number_get(self) -> Number:
+        """Return the bracket token number value."""
+        # Return the number associated with *bracket_token*:
+        bracket_token: BracketToken = self
+        number: Number = bracket_token.value
+        return number
 
     # BracketToken.test():
     @staticmethod
@@ -1787,7 +1799,8 @@ class BracketToken(Token):
         assert isinstance(value, float)
 
         # Tack some different termiators on the end of *block* to test end cases:
-        terminators = ("", " ", "[", "]", "x")
+        terminators: List[str] = ["", " ", "[", "]", "x"]
+        terminator: str
         for terminator in terminators:
             # Now verify that *block* is matched and the resulting *token* is correct:
             token = BracketToken.match(line + terminator, 0)
@@ -1802,18 +1815,15 @@ class CommentToken(Token):
     """Represents an RS274 comment (e.g. '( comment )'."""
 
     # CommentToken.__init__:
-    def __init__(self: CommentToken,
-                 end_index: int,
-                 is_first: bool,
-                 comment: str,
-                 tracing: NullStr = None):
+    def __init__(self, end_index: int, is_first: bool, comment: str,
+                 tracing: Optional[str] = None):
         """Initialze a CommentToken.
 
         Arguments:
             end_index (int): The line position where the token ends.
             is_first (bool): True if at beginning of line.
             comment (str): The actual comment including parenthesis.
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optional[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         """
@@ -1828,23 +1838,24 @@ class CommentToken(Token):
             print("{tracing}=>CommentToken.__init__(*, {end_index}, {is_first}, '{comment}')")
 
         # Initialize the *token_comment* (i.e. *self*):
-        token_comment = self
+        comment_token = self
         super().__init__(end_index)
-        token_comment.is_first = is_first
-        token_comment.comment = comment
+        self.is_first: bool = is_first
+        self.comment: str = comment
+        comment_token = comment_token
 
         # Wrap up any requested *tracing*:
         if tracing is not None:
             print("{tracing}<=CommentToken.__init__(*, {end_index1}, {is_first}, {comment})")
 
     # CommentToken.__str__():
-    def __str__(self: CommentToken):
+    def __str__(self):
         """Return CommentToken as string."""
-        token_comment = self
-        return token_comment.comment
+        comment_token: CommentToken = self
+        return comment_token.comment
 
     # CommentToken.catagorize():
-    def catagorize(self: CommentToken, commands: List[Command], unused_tokens: List[Token]):
+    def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Catagorize a comment token into commands list.
 
         Arguments:
@@ -1858,14 +1869,14 @@ class CommentToken(Token):
         assert isinstance(unused_tokens, list)
 
         # Currently nobody uses a *bracket_token* (i.e. *self*):
-        comment_token = self
-        comment = comment_token.comment
-        comment_command = Command(comment)
+        comment_token: CommentToken = self
+        comment: str = comment_token.comment
+        comment_command: Command = Command(comment)
         commands.append(comment_command)
 
     # CommentToken.match():
     @staticmethod
-    def match(line, start_index):
+    def match(line: str, start_index: int) -> "Optional[CommentToken]":
         """Match an RS274 comment (e.g. '( comment )').
 
         Arugments:
@@ -1873,7 +1884,7 @@ class CommentToken(Token):
                 start_index (int): The position to start parsing at.
 
         Returns:
-            Union[CommentToken, None]: None if no match found;
+            Optional[CommentToken]: None if no match found;
                 othewise, a new CommentToken.
 
         """
@@ -1887,6 +1898,7 @@ class CommentToken(Token):
         line_size = len(line)
         if line_size > 0 and line[start_index] == '(':
             # Scan looking for the closing parenthesis:
+            index: int
             for index in range(start_index + 1, line_size):
                 if line[index] == ')':
                     # We have successfully matched a parenthesis:
@@ -1933,7 +1945,8 @@ class CommentToken(Token):
         assert isinstance(line, str)
 
         # Tack some different termiators on the line:
-        terminators = ("", " ", "(", ")")
+        terminators: List[str] = ["", " ", "(", ")"]
+        terminator: str
         for terminator in terminators:
             full_line = line + terminator
             token = CommentToken.match(full_line, 0)
@@ -1948,11 +1961,11 @@ class LetterToken(Token):
     """Represents a letter tken (e.g. "M6", "G0", "X1.23")."""
 
     # LetterToken.__init__():
-    def __init__(self: LetterToken,
+    def __init__(self,
                  end_index: int,
                  letter: str,
                  number: Number,
-                 tracing: NullStr = None):
+                 tracing: Optional[str] = None):
         """Initialize a LetterToken.
 
         Arguments:
@@ -1972,34 +1985,34 @@ class LetterToken(Token):
         if tracing is not None:
             print(f"{tracing}=>LetterToken.__init__(*, {end_index}, '{letter}', {number})")
 
-        # Initialize the *token_letter* (i.e. *self*):
-        token_letter = self
+        # Initialize the *letter_token* (i.e. *self*):
+        letter_token = self
         super().__init__(end_index, tracing=next_tracing)
-        token_letter.letter = letter
-        token_letter.number = number
+        self.letter: str = letter
+        self.number: Number = number
+        letter_token = letter_token
 
         # Wrap up any requested *tracing*:
         if tracing is not None:
             print(f"{tracing}=>LetterToken.__init__(*, {end_index}, '{letter}', {number})")
 
     # LetterToken.__str__():
-    def __str__(self: LetterToken) -> str:
+    def __str__(self) -> str:
         """Return LetterToken as a string."""
         # Unpack *token_letter* (i.e. *self*):
         token_letter = self
-        letter = token_letter.letter
-        number = token_letter.number
+        letter: str = token_letter.letter
+        number: Number = token_letter.number
 
         # Figure out whether to use an integer of a float to print:
+        fractional: float
+        whole: float
         fractional, whole = math.modf(number)
-        if fractional == 0.0:
-            result = "{0}{1}".format(letter, int(whole))
-        else:
-            result = "{0}{1}".format(letter, number)
+        result: str = f"{letter}{int(whole)}" if fractional == 0.0 else f"{letter}{number}"
         return result
 
     # LetterToken.catagorize():
-    def catagorize(self: LetterToken, commands: List[Command], unused_tokens: List[Token]):
+    def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Sort a LetterToken into a command or an unused token.
 
         Arguments:
@@ -2029,14 +2042,14 @@ class LetterToken(Token):
 
     # LetterToken.match():
     @staticmethod
-    def match(line: str, start_index: int) -> Union[LetterToken, None]:
+    def match(line: str, start_index: int) -> "Optional[LetterToken]":
         """Match a LetterToken on a line.
 
         Arguments:
             line (str): Line to parse token from.
             start_index (int): Line position to start from.
         Returns:
-            Union[LetterToken, None]: None if now match; othewise
+            Optional[LetterToken]: None if now match; othewise
             the newly created LetterToken.
 
         """
@@ -2045,18 +2058,19 @@ class LetterToken(Token):
         assert isinstance(start_index, int)
 
         # print(f"=>token_variable_match(*, '{line}', {start_index})")
-        letter = None
-        end_index = -1
-        number_start = -1
-        number_end = -1
-        line_size = len(line)
+        letter: str = ""
+        end_index: int = -1
+        number_start: int = -1
+        number_end: int = -1
+        line_size: int = len(line)
         if line_size > 0:
-            character = line[start_index].upper()
+            character: str = line[start_index].upper()
             # print("character='{0}'".format(character))
             if character.isalpha() and character != 'O':
                 letter = character
-                have_digit = False
-                have_decimal_point = False
+                have_digit: bool = False
+                have_decimal_point: bool = False
+                index: int
                 for index in range(start_index + 1, line_size):
                     # Dispatch on *character*:
                     character = line[index]
@@ -2111,6 +2125,40 @@ class LetterToken(Token):
         # print(f"<=token_variable_match(*, '{line}', {start_index})=>{token}")
         return token
 
+    # LetterToken.letter_get():
+    def letter_get(self) -> str:
+        """Return the letter token letter."""
+        letter_token: LetterToken = self
+        return letter_token.letter
+
+    # LetterToken.number_get():
+    def number_get(self) -> Number:
+        """Return the letter token number."""
+        letter_token: LetterToken = self
+        return letter_token.number
+
+    # LetterToken.recatagorize():
+    def recatagorize(self, letter_tokens_table: "Dict[str, LetterToken]", errors: List[Error]):
+        """Sort token into either *letter_tokens_table* or and error.
+
+        Arguments:
+            letter_tokens_table (Dict[str, LetterToken]): The place to
+                store unique parameters keyed by parameter letter.
+            errors (List[Error]): An error list to append error
+                messages to.
+
+        """
+        # Grab the *letter* from *letter_token* (i.e. *self*):
+        letter_token = self
+        letter: str = letter_token.letter_get()
+
+        # Stuff *token* into *tokens_table* (or generate an *error*):
+        if letter in letter_tokens_table:
+            error: str = f"Parameter '{letter}' occurs more than once in block (i.e. line.)"
+            errors.append(error)
+        else:
+            letter_tokens_table[letter] = letter_token
+
     # LetterToken.test():
     @staticmethod
     def test():
@@ -2132,6 +2180,7 @@ class LetterToken(Token):
         assert LetterToken.test_success("X-1.", -1.0)
         assert LetterToken.test_success("X-1.1", -1.1)
         assert LetterToken.test_success("X-.1", -0.1)
+        variable: str
         for variable in "abcdefghijilmn" + "pqrstuvwxyz":        # No 'o':
             LetterToken.test_success(variable + "1", 1.0)
             LetterToken.test_success(variable.upper() + "1", 1.0)
@@ -2161,7 +2210,8 @@ class LetterToken(Token):
         assert isinstance(number, (float, int))
 
         # Tack some different termiators on the line:
-        terminators = ("", " ", "(", ")", "x")
+        terminators: List[str] = ["", " ", "(", ")", "x"]
+        terminator: str
         for terminator in terminators:
             full_line = line + terminator
             token = LetterToken.match(full_line, 0)
@@ -2177,11 +2227,11 @@ class OLetterToken(Token):
     """Represents a LinuxCNC O code (e.g. "O123 call, ...)."""
 
     # OLetterToken.__init__():
-    def __init__(self: OLetterToken,
+    def __init__(self,
                  end_index: int,
                  routine_number: int,
                  keyword: str,
-                 tracing: NullStr = None):
+                 tracing: Optional[str] = None):
         """Initialize an OLetterToken.
 
         Arguments:
@@ -2189,7 +2239,7 @@ class OLetterToken(Token):
             routine_number (int): The routine number.
             keyword (str): The keyword is one of "call", "sub",
                 or "endsub".
-            tracing (NullStr): None for no tracing; otherwise
+            tracing (Optional[str]): None for no tracing; otherwise
                 the string to prefix to tracing output.
 
         """
@@ -2204,23 +2254,24 @@ class OLetterToken(Token):
             print("{tracing}=>OLetterToken.__init__(*, {end_index}, {routine_number}, '{keyword}')")
 
         # Initialize the *token_o_letter* (i.e. *self*):
-        token_o_letter = self
+        o_letter_token = self
         super().__init__(end_index, tracing=next_tracing)
-        token_o_letter.routine_number = routine_number
-        token_o_letter.keyword = keyword.lower()
+        self.routine_number: int = routine_number
+        self.keyword: str = keyword.lower()
+        o_letter_token = o_letter_token
 
         # Wrap up any requested *tracing*:
         if tracing is not None:
             print("{tracing}<=OLetterToken.__init__(*, {end_index}, {routine_number}, '{keyword}')")
 
     # OLetterToken.__str__():
-    def __str__(self: OLetterToken):
+    def __str__(self):
         """Return OLetterToken as a string."""
         token_letter = self
         return "O{0} {1}".format(token_letter.routine_number, token_letter.keyword)
 
     # OLetterToken.catagorize():
-    def catagorize(self: OLetterToken, commands: List[Command], unused_tokens: List[Token]):
+    def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Sort OLetterToken into unused tokens list."""
         # Verify argument types:
         assert isinstance(commands, list)
@@ -2232,7 +2283,7 @@ class OLetterToken(Token):
 
     # OLetterToken.match():
     @staticmethod
-    def match(line: str, start_index: int):
+    def match(line: str, start_index: int) -> "Optional[OLetterToken]":
         """Match a line to and OLetterToken.
 
         Arguments:
@@ -2251,6 +2302,7 @@ class OLetterToken(Token):
         number_start = -1
         number_end = -1
         line_size = len(line)
+        index: int
         for index in range(start_index, line_size):
             character = line[index].lower()
             # print("[{0}]:'{1}', mode={2}".format(index, character, mode))
@@ -2295,6 +2347,12 @@ class OLetterToken(Token):
             token = OLetterToken(end_index, value, name)
         return token
 
+    # OLetterToken.number_get():
+    def number_get(self) -> Number:
+        """Return routine number associated with *OLetterToken*."""
+        o_letter_token: OLetterToken = self
+        return o_letter_token.routine_number
+
     # OLetterToken.test():
     @staticmethod
     def test():
@@ -2311,10 +2369,11 @@ class OLetterToken(Token):
         assert OLetterToken.test_success("o12  call", 12, "call")
 
         # Failure tests:
-        tests = ("", "x", "?", "1", "(",
-                 "o", "o0", "o0 ", "o0 s", "o0 su", "o0 subx",
-                 "o0sub", "o0call", "o0endsub")
+        tests: List[str] = ("", "x", "?", "1", "(",
+                            "o", "o0", "o0 ", "o0 s", "o0 su", "o0 subx",
+                            "o0sub", "o0call", "o0endsub")
         # Failure tests
+        test: str
         for test in tests:
             assert not isinstance(OLetterToken.match(test, 0), OLetterToken), \
               "Test '{0}' succeeded when it should not have!".format(test)
@@ -2336,7 +2395,8 @@ class OLetterToken(Token):
         assert isinstance(keyword, str)
 
         # Tack some different terminators on the line:
-        terminators = ("", " ", "(", "[")
+        terminators: List[str] = ["", " ", "(", "["]
+        termiantor: str
         for terminator in terminators:
             full_line = line + terminator
             token = OLetterToken.match(full_line, 0)
@@ -2355,6 +2415,7 @@ if __name__ == "__main__":
     file_names = sys.argv[1:]
 
     print("Final commands list:")
+    file_name: str
     for file_name in file_names:
         print("file_name='{0}'".format(file_name))
         with open(file_name, "r") as in_file:
