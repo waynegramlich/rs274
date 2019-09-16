@@ -58,10 +58,6 @@ class Command:
                 dictionary of {'X':1.2, 'Y':3.4}.
 
         """
-        # Verify argument types:
-        assert isinstance(name, str)
-        assert isinstance(parameters, dict) or parameters is None
-
         # Create an empty *parameters* dictionary if needed:
         if parameters is None:
             parameters = dict()
@@ -111,11 +107,6 @@ class Group:
                 (e.g. "Motion Control")
 
         """
-        # Verify argument types:
-        assert isinstance(rs274, RS274)
-        assert isinstance(short_name, str)
-        assert isinstance(title, str)
-
         # Stuff arguments into *group* (i.e. *self*):
         group: Group = self
         self.key: int = -1
@@ -137,16 +128,6 @@ class Group:
             title (str): A short description of the G-code does.
 
         """
-        # Verify argument types:
-        assert isinstance(name, str) and name.startswith('G')
-        assert isinstance(parameters, str)
-        assert parameters == "" or (parameters.isupper() and parameters.isalpha())
-        assert isinstance(title, str)
-        try:
-            float(name[1:])
-        except ValueError:
-            assert False, f"'{name[1:]}' is not a number"
-
         # Create *g_code_template and register it with *group* (i.e. *self*):
         g_code_template: Template = Template(name, parameters, title)
         group: Group = self
@@ -163,16 +144,6 @@ class Group:
             title (str): A short description of the M-code does.
 
         """
-        # Verify argument types:
-        assert isinstance(name, str) and name.startswith('M')
-        assert isinstance(parameters, str)
-        assert parameters == "" or (parameters.isupper() and parameters.isalpha())
-        assert isinstance(title, str)
-        try:
-            float(name[1:])
-        except ValueError:
-            assert False, f"'{name[1:]}' is not a number"
-
         # Create *g_code_template*:
         m_code_template: Template = Template(name, parameters, title)
 
@@ -195,11 +166,6 @@ class Group:
             title (str): A short description of the letter code does.
 
         """
-        # Verify argument types:
-        assert isinstance(letter, str)
-        assert len(letter) == 1 and letter.isalpha() and letter.isupper()
-        assert isinstance(title, str)
-
         # Register *letter_template* with *group* (i.e. *self*):
         group: Group = self
         letter_template: Template = Template(letter, "", title)
@@ -213,9 +179,6 @@ class Group:
             template (Template): The template to register with group.
 
         """
-        # Verify argument types:
-        assert isinstance(template, Template)
-
         # Grab some values from *group* (i.e. *self*) and *rs274*:
         group: Group = self
         group_templates: Dict[str, Template] = group.templates
@@ -316,10 +279,6 @@ class RS274:
             List[Token]: A list of unused Token's.
 
         """
-        # Verify argument types:
-        assert isinstance(tokens, list)
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform any requested *tracing*:
         # next_tracing = None if tracing is None else tracing + " "
         tokens_text: str = ""
@@ -349,9 +308,6 @@ class RS274:
     @staticmethod
     def commands_to_text(commands: List[Command]) -> str:
         """Return Command's list as a string."""
-        # Verify argument types:
-        assert isinstance(commands, list)
-
         return '[' + "; ".join(f"{command}" for command in commands) + ']'
 
     # RS274.commands_from_tokens():
@@ -375,13 +331,6 @@ class RS274:
             str: The default motion command name to use afterwards.
 
         """
-        # Verify argument types:
-        assert isinstance(tokens, list)
-        assert isinstance(tracing, str) or tracing is None
-        token: Token
-        for token in tokens:
-            assert isinstance(token, Token), f"token={token} tokens={tokens}"
-
         # Define some variables to make `mypy` happy:
         unused_tokens_text: str = ""
         tokens_text: str = ""
@@ -463,10 +412,6 @@ class RS274:
             List[Command]: The list of resulting Command's.
 
         """
-        # Verify argument types:
-        assert isinstance(content, str)
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform any requested *tracing*:
         next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
@@ -527,10 +472,6 @@ class RS274:
             file_name (str): The file to write out to.
 
         """
-        # Verify argument types:
-        assert isinstance(commands, list)
-        assert isinstance(file_name, str)
-
         # Write *commands* out to *file_name*
         with open(file_name, "w") as out_file:
             command: Command
@@ -683,9 +624,6 @@ class RS274:
             List[Command]: List of updated Command's.
 
         """
-        # Verify argument types:
-        assert isinstance(commands, list)
-
         return [command for command in commands if command.Name not in ("G28", "G28.1")]
 
     # RS274.g91_remove():
@@ -700,9 +638,6 @@ class RS274:
             List[Command]: The Command's list with G91 removed.
 
         """
-        # Verify argument types:
-        assert isinstance(commands, list)
-
         return [command for command in commands if command.Name not in ("G91",)]
 
     # RS274.group_conflicts_detect()
@@ -718,12 +653,6 @@ class RS274:
             str: The motion command name (or "" for none).
 
         """
-        # Verify argument types:
-        assert isinstance(commands, list)
-        command: Command
-        for command in commands:
-            assert isinstance(command, Command)
-
         # Grab some values from *rs274* (i.e. *self*):
         motion_group = rs274.motion_group
         assert isinstance(motion_group, Group)
@@ -791,11 +720,6 @@ class RS274:
             Group: The newly created Group is returned.
 
         """
-        # Verify argument types:
-        assert isinstance(short_name, str) and short_name != ""
-        assert isinstance(title, str)
-        assert isinstance(before, str)
-
         # Grab some values from *rs274* (i.e. *self*):
         rs274: RS274 = self
         groups_table = rs274.groups_table
@@ -1056,11 +980,6 @@ class RS274:
                 lists the Command(s) that need to use parameter letter.
 
         """
-        # Verify argument types:
-        assert isinstance(unused_tokens_table, dict)
-        assert isinstance(commands, list)
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform any requested *tracing*:
         if tracing is not None:
             unused_tokens_text: str = RS274.tokens_to_text(list(unused_tokens_table.values()))
@@ -1145,10 +1064,6 @@ class RS274:
             errors (List[Error]): A list of error strings.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform any requested *tracing*:
         next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
@@ -1284,9 +1199,6 @@ class RS274:
             List[Error]: A list of token parsing errors.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-
         # Grab some values from *rs274* (i.e. *self*):
         rs274: RS274 = self
         white_space: str = rs274.white_space
@@ -1328,9 +1240,6 @@ class RS274:
     @staticmethod
     def n_remove(commands: List[Command]) -> List[Command]:
         """Return a copy of commands with N codes removed."""
-        # Verify arguments:
-        assert isinstance(commands, list)
-
         return [command for command in commands if command.Name[0] != 'N']
 
     # RS274.table_from_tokens():
@@ -1346,9 +1255,6 @@ class RS274:
             List[Error]: List of errors.
 
         """
-        # Verify argument types:
-        assert isinstance(tokens, list)
-
         # Fill up *tokens_table* with each *token* checking for duplicates:
         errors: List[Error] = list()
         letter_tokens_table: Dict[str, LetterToken] = dict()
@@ -1385,11 +1291,6 @@ class RS274:
             tracing
 
         """
-        # Verify argument types:
-        assert isinstance(letter_commands_table, dict)
-        assert isinstance(unused_tokens_table, dict)
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform any requested *tracing*:
         if tracing is not None:
             letters_text = " ".join([f"{letter}" for letter in letter_commands_table.keys()])
@@ -1443,9 +1344,6 @@ class RS274:
     @staticmethod
     def tokens_to_text(tokens):
         """Return turn token list as a string."""
-        # Verify argument types:
-        assert isinstance(tokens, list)
-
         return '[' + ", ".join([f"{token}" for token in tokens]) + ']'
 
 
@@ -1465,11 +1363,6 @@ class Template:
             title (str): A description title for documentation purposes.
 
         """
-        # Verify argument types:
-        assert isinstance(name, str)
-        assert isinstance(parameter_letters, str)
-        assert isinstance(title, str)
-
         # Create a *parameters* dictionary and fill it in from *parameter_letters*:
         parameters: Dict[str, Number] = dict()
         parameter_letter: str
@@ -1515,10 +1408,6 @@ class Token:
                 the string to prefix to tracing output.
 
         """
-        # Verify argument types:
-        assert isinstance(end_index, int) and end_index >= 0
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform any requested *tracing*:
         if tracing is not None:
             print(f"{tracing}=>Token.__init__(*, {end_index})")
@@ -1540,10 +1429,6 @@ class Token:
     # Token.catagorize():
     def catagorize(self, commands: List[Command], unused_tokens: "List[Token]"):
         """Place holder routine that fails."""
-        # Verify argument types:
-        assert isinstance(commands, list)
-        assert isinstance(unused_tokens, list)
-
         # If this routine is called, we have missed writing a *catagorize* method somewhere:
         token = self
         assert False, f"No catagorize() method for {type(token)}"
@@ -1593,11 +1478,6 @@ class BracketToken(Token):
                 the string to prefix to tracing output.
 
         """
-        # Verify argument types:
-        assert isinstance(end_index, int) and end_index >= 0
-        assert isinstance(value, (int, float))
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform an requested *tracing*:
         next_tracing: Optional[str] = None if tracing is None else tracing + " "
         if tracing is not None:
@@ -1622,10 +1502,6 @@ class BracketToken(Token):
     # BracketToken.catagorize():
     def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Catagorize the bracket token into unused tokens."""
-        # Verify argument types:
-        assert isinstance(commands, list)
-        assert isinstance(unused_tokens, list)
-
         # Currently nobody uses a *bracket_token* (i.e. *self*):
         bracket_token = self
         unused_tokens.append(bracket_token)
@@ -1646,11 +1522,6 @@ class BracketToken(Token):
             or None if no match found.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(start_index, int) and start_index >= 0
-        assert isinstance(tracing, str) or tracing is None
-
         # Perform requested *tracing*:
         # next_tracing = None if tracing is None else tracing + " "
         if tracing is not None:
@@ -1794,10 +1665,6 @@ class BracketToken(Token):
             value (float): The value inside of the brackets to match.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(value, float)
-
         # Tack some different termiators on the end of *block* to test end cases:
         terminators: List[str] = ["", " ", "[", "]", "x"]
         terminator: str
@@ -1827,11 +1694,6 @@ class CommentToken(Token):
                 the string to prefix to tracing output.
 
         """
-        # Verify argument types:
-        assert isinstance(end_index, int) and end_index >= 0
-        assert isinstance(is_first, bool)
-        assert isinstance(comment, str)
-
         # Preform any requested *tracing*:
         # next_tracing = None if tracing is None else tracing + " "
         if tracing is not None:
@@ -1864,10 +1726,6 @@ class CommentToken(Token):
             unused_tokens (List[Tokens]): Unused.
 
         """
-        # Verify argument types:
-        assert isinstance(commands, list)
-        assert isinstance(unused_tokens, list)
-
         # Currently nobody uses a *bracket_token* (i.e. *self*):
         comment_token: CommentToken = self
         comment: str = comment_token.comment
@@ -1888,12 +1746,8 @@ class CommentToken(Token):
                 othewise, a new CommentToken.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(start_index, int)
-        end_index = -1
-
         # We most start with a open parenthesis:
+        end_index = -1
         is_first = start_index == 0
         line_size = len(line)
         if line_size > 0 and line[start_index] == '(':
@@ -1941,9 +1795,6 @@ class CommentToken(Token):
     @staticmethod
     def test_success(line: str):
         """Verify that line is correctly parsed as a comment."""
-        # Verify argument types:
-        assert isinstance(line, str)
-
         # Tack some different termiators on the line:
         terminators: List[str] = ["", " ", "(", ")"]
         terminator: str
@@ -1974,12 +1825,6 @@ class LetterToken(Token):
             number (Number): The variable value.
 
         """
-        # Verify argument types:
-        assert isinstance(end_index, int) and end_index >= 0
-        assert (isinstance(letter, str) and
-                len(letter) == 1 and letter.isalpha() and letter.isupper())
-        assert isinstance(number, (float, int))
-
         # Preform any requested *tracing*:
         next_tracing = None if tracing is None else tracing + " "
         if tracing is not None:
@@ -2022,10 +1867,6 @@ class LetterToken(Token):
                 non-Command tokens into.
 
         """
-        # Verify argument types:
-        assert isinstance(commands, list)
-        assert isinstance(unused_tokens, list)
-
         # Unpack *letter_token* (i.e. *self*):
         letter_token = self
         letter = letter_token.letter
@@ -2053,10 +1894,6 @@ class LetterToken(Token):
             the newly created LetterToken.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(start_index, int)
-
         # print(f"=>token_variable_match(*, '{line}', {start_index})")
         letter: str = ""
         end_index: int = -1
@@ -2205,10 +2042,6 @@ class LetterToken(Token):
             number (Number): number to match.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(number, (float, int))
-
         # Tack some different termiators on the line:
         terminators: List[str] = ["", " ", "(", ")", "x"]
         terminator: str
@@ -2243,11 +2076,6 @@ class OLetterToken(Token):
                 the string to prefix to tracing output.
 
         """
-        # Verify argument types:
-        assert isinstance(end_index, int) and end_index >= 0
-        assert isinstance(routine_number, int) and routine_number >= 0
-        assert isinstance(keyword, str) and keyword.lower() in ("call", "sub", "endsub")
-
         # Perfom an requested *tracing*:
         next_tracing = None if tracing is None else tracing + " "
         if tracing is not None:
@@ -2273,10 +2101,6 @@ class OLetterToken(Token):
     # OLetterToken.catagorize():
     def catagorize(self, commands: List[Command], unused_tokens: List[Token]):
         """Sort OLetterToken into unused tokens list."""
-        # Verify argument types:
-        assert isinstance(commands, list)
-        assert isinstance(unused_tokens, list)
-
         # Currently nobody uses a *oletter_token* (i.e. *self*):
         oletter_token = self
         unused_tokens.append(oletter_token)
@@ -2291,9 +2115,6 @@ class OLetterToken(Token):
             start_index (int): Line position start at.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(start_index, int)
         # print("=>OLetterToken.match('{0}', {1})".format(line[start_index:], start_index))
         name = "None"
         white_space = " \t"
@@ -2389,11 +2210,6 @@ class OLetterToken(Token):
             keyword (str): Keyword to match with.
 
         """
-        # Verify argument types:
-        assert isinstance(line, str)
-        assert isinstance(routine_number, int)
-        assert isinstance(keyword, str)
-
         # Tack some different terminators on the line:
         terminators: List[str] = ["", " ", "(", "["]
         termiantor: str
