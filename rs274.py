@@ -399,7 +399,8 @@ class RS274:
 
     # RS274.content_parse():
     @staticmethod
-    def content_parse(content: str, tracing: Optional[str] = None) -> List[Command]:
+    def content_parse(content: str,
+                      tracing: Optional[str] = None, trace: bool = False) -> List[Command]:
         """Parse an RS274 content and return resulting Command's.
 
         Arguments:
@@ -426,11 +427,22 @@ class RS274:
         line: str
         for line_index, line in enumerate(lines):
             # Parse *block* into *commands*:
+            # print(f"Line[{line_index}]:'{line}'")
             rs274_commands: Optional[List[Command]]
             parse_errors: List[Error]
+            # next_tracing = "Line[18]" if line_index == 18 else None
             rs274_commands, parse_errors = rs274.line_parse(line, tracing=next_tracing)
-            if rs274_commands is not None:
-                commands_list.append(rs274_commands)
+            trace_line: str
+            if rs274_commands is None:
+                trace_line = line.replace('(', '{').replace(')', '}')
+                rs274_commands = [Command("( '{trace_line}' did not parse )")]
+            if trace:
+                trace_line = line.replace('(', '{').replace(')', '}')
+                rs274_commands.insert(0, Command(f"( Line[{line_index}]: '{trace_line}' )"))
+            if len(rs274_commands) <= 1:
+                trace_line = line.replace('(', '{').replace(')', '}')
+                rs274_commands.append(Command("( Empty commands parse '{trace_line}' )"))
+            commands_list.append(rs274_commands)
 
             # Print out any errors:
             if len(parse_errors) >= 1 or next_tracing is not None:
@@ -491,47 +503,62 @@ class RS274:
         """
         # Sweep across *commands* special casing some of the G commands:
         nan: float = float("nan")  # Not A Number
-        retract_mode: Optional[str] = None
+        retract_mode: str = ""
         updated_commands: List[Command] = list()
         variables: Dict[str, Number] = dict()
         command: Command
-        x: float
-        y: float
-        z: float
-        for command in commands:
+        p: float = nan
+        q: float = nan
+        r: float = nan
+        x: float = nan
+        y: float = nan
+        z: float = nan
+        z_depth: float = nan
+
+        variables['P'] = p
+        variables['Q'] = q
+        variables['R'] = r
+        variables['X'] = x
+        variables['Y'] = y
+        variables['Z'] = z
+        variables["Zdepth"] = z_depth
+
+        for index, command in enumerate(commands):
             # Unpack *command*:
             name: str = command.Name
             parameters: Dict[str, Number] = command.Parameters
+            if index < -1:
+                print(f"Command[{index}]: BEFORE: "
+                      f"command:'{command.Name}' "
+                      f"parameters:{command.Parameters} "
+                      f"x={variables['X']} y={variables['Y']} z={variables['Z']} "
+                      f"z_depth={variables['Zdepth']}")
 
             # Update *variables*:
             key: str
             value: Number
             for key, value in parameters.items():
                 if key == 'Z' and name in ("G82", "G83"):
-                    variables['Zdepth'] = (value if 'Z' in variables and value < variables['Z']
-                                           else nan)
+                    key = "Zdepth"
                 variables[key] = value
 
             if name in ("G98", "G99"):
                 retract_mode = name
                 updated_commands.append(command)
-            # elif name == "G80":
-            #     # variables['Zdepth'] = None
-            #     updated_commands.append(command)
+            elif name == "G80":
+                variables['Zdepth'] = nan
+                updated_commands.append(command)
             elif name in ("G82", "G83"):
                 # Extract the needed values from *parameters* and *varibles*:
                 # l = parameters['L'] if 'L' in parameters else (
                 #    variables['L'] if 'L' in variables else None)
-                p: float = (parameters['P'] if 'P' in parameters
-                            else (variables['P'] if 'P' in variables else nan))
-                q: float = (parameters['Q'] if 'Q' in parameters
-                            else (variables['Q'] if 'Q' in variables else nan))
-                r: float = (parameters['R'] if 'R' in parameters else
-                            (variables['R'] if 'R' in variables else nan))
-                x = parameters['X'] if 'X' in parameters else variables['X']
-                y = parameters['Y'] if 'Y' in parameters else variables['Y']
-                z_depth: float = variables['Zdepth']
-                z = variables['Z']
+                p = float(variables['P'])
+                q = float(variables['Q'])
+                r = float(variables['R'])
+                x = float(variables['X'])
+                y = float(variables['Y'])
+                z = float(variables['Z'])
+                z_depth = float(variables['Zdepth'])
 
                 # Provide *comment_command* to show all of the parameters used for the
                 # drilling cycle:
@@ -539,18 +566,28 @@ class RS274:
                                                    f"Zdepth:{z_depth} retract_mode:{retract_mode})")
                 updated_commands.append(comment_command)
 
-                # Rapid (i.e. `G0`) to (*x*, *y*).  We assume that we are already at either
-                # *z* height or *r* height from a previous operation:
-                updated_commands.append(Command("G0", {'X': x, 'Y': y}))
+                isnan = math.isnan
+                if isnan(x) or isnan(y) or isnan(z) or isnan(z_depth) or isnan(q) or isnan(r):
+                    comment_text = f"( {name} failed due to missing parameter )"
+                    fail_comment = Command(comment_text)
+                    updated_commands.append(fail_comment)
+                else:
+                    # Rapid (i.e. `G0`) to make sure that Z is at least the height of R:
+                    z_drill: float = z
+                    if z_drill < r:
+                        z_drill = r
+                        updated_commands.append(Command("G0", {'Z': z_drill}))
 
-                # Only drill if *z_depth*, *r* and *z* are rational:
-                if not math.isnan(z_depth) and z_depth < r <= z:
+                    # Rapid (i.e. `G0`) to (*x*, *y*).  We assume that *z* is safe enough:
+                    updated_commands.append(Command("G0", {'X': x, 'Y': y}))
+
                     # Dispatch on *name*:
                     if name == "G82":
                         # Simple drilling cycle:
 
                         # Rapid (i.e. `G0`) down to *r* if it makes sense:
                         if r < z:
+                            z_drill = r
                             updated_commands.append(Command("G0", {'Z': r}))
 
                         # Drill (i.e. `G1`) down to *z_depth*:
@@ -562,15 +599,20 @@ class RS274:
 
                         # Rapid out of the hole to the correct retract height based
                         # on *retract_mode*:
-                        retract_z = r if retract_mode == "G99" else z
-                        updated_commands.append(Command("G0", {'Z': retract_z}))
+                        z_drill = r if retract_mode == "G99" else z
+                        updated_commands.append(Command("G0", {'Z': z_drill}))
+                        variables['Z'] = z_drill
                     elif name == "G83":
                         # Keep pecking down until we get drilled down to *z_depth*:
                         delta: float = q / 10.0
-                        drill_z: float = z
+
+                        # Do an initial rapid down to *r*:
+                        z_drill = z
                         peck_index: int = 0
-                        while drill_z > z_depth:
-                            # Rapid (i.e. `G0`) down to *rapid_z*, where *rapid_z* will
+                        while z_drill > z_depth:
+                            # print(f"Peck_Index[{peck_index}]:z_drill={z_drill}")
+
+                            # Rapid (i.e. `G0`) up/down to *rapid_z*, where *rapid_z* will
                             # be at *r* on the first iteration, and multiples of *q* lower
                             # on subsequent iterations.  The *delta* offset enusures that
                             # the drill bit does not rapid into the hole bottom:
@@ -578,11 +620,11 @@ class RS274:
                                                                       else delta))
                             updated_commands.append(Command("G0", {'Z': rapid_z}))
 
-                            # Drill (i.e. `G1`) down to *drill_z*, where *drill_z* is a
-                            # multiple of *q* below *r*.  Never allow *drill_z* to get below
+                            # Drill (i.e. `G1`) down to *z_drill*, where *z_drill* is a
+                            # multiple of *q* below *r*.  Never allow *z_drill* to get below
                             # *z_depth*:
-                            drill_z = max(r - (peck_index + 1) * q, z_depth)
-                            updated_commands.append(Command("G1", {'Z': drill_z}))
+                            z_drill = max(r - (peck_index + 1) * q, z_depth)
+                            updated_commands.append(Command("G1", {'Z': z_drill}))
 
                             # Pause at the bottom of the hole if *p* is specified:
                             if not math.isnan(p) and p > 0:
@@ -596,20 +638,27 @@ class RS274:
 
                         # Retract back up to *z* if we are in `G99` mode:
                         if retract_mode == "G98":
-                            updated_commands.append(Command("G0", {'Z': z}))
-                else:
-                    updated_commands.append(Command(f"( {name} drill operation suppressed because"
-                                                    f" Z:{z_depth} < R:{r} <= Zini:{z} false )"))
-            elif False and name in ("G0", "G43", "F18.0"):
-                x = parameters['X'] if 'X' in parameters else variables['X']
-                y = parameters['Y'] if 'Y' in parameters else variables['Y']
-                z = (parameters['Z'] if 'Z' in parameters else (
-                     variables['Z'] if 'Z' in variables else nan))
-                comment_command = Command(f"( {name} X:{x} Y:{y} Z:{z} )")
-                updated_commands.append(comment_command)
+                            z_drill = z
+                            updated_commands.append(Command("G0", {'Z': z_drill}))
+                        variables['Z'] = z_drill
+            elif name in ("G0", "G1", "G43"):
+                if 'X' in parameters:
+                    variables['X'] = float(parameters['X'])
+                if 'Y' in parameters:
+                    variables['Y'] = float(parameters['Y'])
+                if 'Z' in parameters:
+                    variables['Z'] = float(parameters['Z'])
                 updated_commands.append(command)
+                # print(f"command.Name='{command.Name}' command.Parameters={command.Parameters}")
             else:
                 updated_commands.append(command)
+
+            if index < -1:
+                print(f"Command[{index}]: AFTER: "
+                      f"command:'{command.Name}' "
+                      f"parameters:{command.Parameters} "
+                      f"x={variables['X']} y={variables['Y']} z={variables['Z']} "
+                      f"z_depth={variables['Zdepth']}")
 
         return updated_commands
 
@@ -625,7 +674,8 @@ class RS274:
             List[Command]: List of updated Command's.
 
         """
-        return [command for command in commands if command.Name not in ("G28", "G28.1")]
+        return [(Command("( G28/G28.1 removed )") if command.Name in ("G28", "G28.1") else command)
+                for command in commands]
 
     # RS274.g91_remove():
     @staticmethod
@@ -639,7 +689,8 @@ class RS274:
             List[Command]: The Command's list with G91 removed.
 
         """
-        return [command for command in commands if command.Name not in ("G91",)]
+        return [(Command("( G91 removed )") if command.Name == "G91" else command)
+                for command in commands]
 
     # RS274.group_conflicts_detect()
     @staticmethod
@@ -663,13 +714,13 @@ class RS274:
         duplicates_table: Dict[str, Command] = dict()
         errors: List[Error] = list()
         motion_command_name: str = ""
-        g80_found: bool = False
+        # g80_found: bool = False
         for command in commands:
             # Grab values from *command*:
             name: str = command.Name
             letter: str = name[0]
-            if name == "G80":
-                g80_found = True
+            # if name == "G80":
+            #     g80_found = True
 
             # Find the *group* associated with *command*, or fail trying:
             group: Optional[Group]
@@ -699,8 +750,8 @@ class RS274:
                 if group is motion_group:
                     motion_command_name = command.Name
 
-        if g80_found:
-            motion_command_name = ""
+        # if g80_found:
+        #      motion_command_name = ""
 
         # Return the resulting *errors* and *motion_command_name*:
         return errors, motion_command_name
@@ -1062,36 +1113,33 @@ class RS274:
         if tracing is not None:
             print(f"{tracing}=>RS274.line_parse('{line}', *)")
 
-        # Start with *final_codes* set to *None*.  Only override *final_commands* with a list
-        # of *Command*'s if there are no errors and no unused tokens:
-        errors: List[Error] = list()
-        final_commands: List[Command] = list()
-
-        # Grab *motion_command_name* from *rs274*; it will be stuffed back into *rs274* later:
+        # Grab *previous_motion_command_name* from *rs274* (i.e. *self*):
         rs274: RS274 = self
-        motion_command_name: str = rs274.motion_command_name
+        previous_motion_command_name = rs274.motion_command_name
         if tracing is not None:
-            print(f"{tracing}before: motion_command_name='{motion_command_name}'")
+            print(f"{tracing}previous_motion_command_name='{previous_motion_command_name}'")
+
+        # The final results from this method are stored in the variables below.  The
+        # *final_motion_command_name* is stuffed back into *rs274* (i.e. *self*) at the end:
+        final_commands: List[Command]
+        final_errors: List[Error]
+        final_motion_command_name: str
 
         # Start by tokenizing the *block* (i.e. a line of G-code) into *tokens*:
         tokens: List[Token]
         tokenize_errors: List[str]
         tokens, tokenize_errors = rs274.line_tokenize(line)
-        errors.extend(tokenize_errors)
 
-        # See whether we have "G80" and convert it to a "G0" for a motion command:
-        token: Token
-        for token in tokens:
-            if isinstance(token, LetterToken) and token.letter == 'G' and token.number == 80:
-                motion_command_name = "G0"
-                break
-
-        # We only continue with the parsing if there were no *errors* tokenizing *block*:
-        if len(errors) >= 1:
-            # We did not get very far, so just set *final_commands* to an empty list return it:
+        # We only continue with the parsing if there were no *tokenize_errors*:
+        result_message: str = ""
+        if tokenize_errors:
+            # We have *tokenize_errors*, so we stop the process here:
             final_commands = list()
+            final_errors = tokenize_errors
+            final_motion_command_name = previous_motion_command_name
+            result_message = f"{len(tokenize_errors)} tokenization errors"
         else:
-            # Now we try to parse *tokens* into a list of *final_codes*.  First we try it
+            # Now we try to parse *tokens* into a list of *final_commands*.  First we try it
             # without adding on a "sticky" motion G command.  If that fails, we try to add
             # on a "sticky" motion G command, and see if the fixes things up:
 
@@ -1101,93 +1149,140 @@ class RS274:
             unused_tokens1: List[LetterToken]
             motion_command_name1: str
             (commands1, errors1, unused_tokens1,
-             motion_command_name1) = rs274.commands_from_tokens(tokens,
-                                                                tracing=next_tracing)
-
-            # If there are no errors and no unused tokens, we have succeeded:
-            if not errors1 and not unused_tokens1:
-                # We have have succeeded.  Update both *final_codes* and *motion_command_name*:
-                final_commands = commands1
-                if motion_command_name1 != "":
-                    # print(f"setting motion_command_name={motion_command_name}")
-                    motion_command_name = motion_command_name1
-                if tracing is not None:
-                    print(f"{tracing}motion_command_name='{motion_command_name}'")
-
-            # If the first parse of *tokens* has some left over tokens *AND* there was no
-            # motion token found (e.g. G0, G3, G82, etc.)  It makes sense to try again by
-            # attempting to fix the problems by adding a *Token* based on *motion_command_name*
-            # into the *tokens* mix:
-            no_final_commands = final_commands is None
+             motion_command_name1) = rs274.commands_from_tokens(tokens, tracing=next_tracing)
             if tracing is not None:
-                print(f"{tracing}no_final_commands={no_final_commands}")
-                unused_tokens1_text = RS274.tokens_to_text(unused_tokens1)
-                print(f"{tracing}unused_tokens1='{unused_tokens1_text}'")
-                print(f"motion_command_name='{motion_command_name}'")
-                print(f"motion_command_name1='{motion_command_name1}'")
-            if (no_final_commands and (len(unused_tokens1) >= 1 and
-                                       motion_command_name is not None and
-                                       motion_command_name1 is None)):
+                commands1_text: str = RS274.commands_to_text(commands1)
+                unused_tokens1_text: str = RS274.tokens_to_text(unused_tokens1)
+                print(f"{tracing}commands1=[{commands1_text}] "
+                      f"error1={errors1} "
+                      f"unused_tokens1=[{unused_tokens1_text}] "
+                      f"motion_command_name1='{motion_command_name1}'")
 
-                # If we have a *motion_command_name*, create a *letter_token* and tack it onto
-                # *tokens*:
-                assert len(motion_command_name) >= 2
-                letter: str = motion_command_name[0]
-                assert letter in "G"
-                number_text: str = motion_command_name[1:]
-                number: Number = float(number_text) if '.' in number_text else int(number_text)
-                letter_token: Token = LetterToken(0, letter, number)
-                tokens.append(letter_token)
-
-                # Tack *motion_name* (as a *Token*) onto *tokens* and try again:
-                commands2: List[Command]
-                errors2: List[Error]
-                unused_tokens2: List[LetterToken]
-                motion_command_name2: str
-                commands2, errors2, unused_tokens2, motion_command_name2 = \
-                    rs274.commands_from_tokens(tokens, tracing=next_tracing)
-
-                # for index, command in enumerate(commands1):
-                #     print(f" commands2[{index}]:{command}")
-                # for index, unused_token in enumerate(unused_tokens1):
-                #     print(f" unused_tokens2[{index}']:{unused_token}")
-
-                # If there are no errors and no unused tokens, we have succeeded:
-                if not errors2 and not unused_tokens2:
-                    # We have succeeded by adding *motion_command_name* to *tokens*:
-                    final_commands = commands2
-                    if motion_command_name2 != "":
-                        motion_command_name = motion_command_name2
-
-                # print(f"len(errors2)={len(errors2)}")
-                # print(f"len(unused_tokens2)={len(unused_tokens2)}")
-                # print(f"motion_token2={motion_token2}")
-                # final_commands_text = ("None" if final_commands is None
-                #                        else f"{len(final_commands)}"
-                # print(f"final_commands={final_commands_text}")
-
-            # Use *codes1*, *errors1*, and *motion_command_name* if we did not successfully
-            # generate *final_commands* without errors and unused tokens:
-            if final_commands is None:
+            # If there are no *errors1* and no *unused_tokens*, we have succeeded:
+            succeeded: bool = False
+            if not errors1 and not unused_tokens1:
+                # We *succeeded* on the first parse attempt, so we can wrap up the result
+                # variables being careful to use the correct value for *final_motion_command_name*:
                 final_commands = commands1
-                errors.extend(errors1)
-                if len(unused_tokens1) >= 1:
-                    unused_text: str = RS274.tokens_to_text(unused_tokens1)
-                    unused_tokens_error: str = f"'{unused_text}' is/are unused"
-                    errors.append(unused_tokens_error)
-                if motion_command_name != "":
-                    motion_command_name = motion_command_name1
+                final_errors = errors1
+                final_motion_command_name = (motion_command_name1 if motion_command_name1
+                                             else previous_motion_command_name)
+                result_message = "First parse attempt succeeded"
+            elif unused_tokens1 and motion_command_name1 == "":
+                # The first parse of *tokens* had some *unused_tokens* and there was no
+                # *motion_command1" (e.g. G0, G3, G82, etc.) found. It makes sense to try
+                # again by attempting to fix the problem by adding a *motion_token* to
+                # the *tokens* and attempting to reparse:
 
-        # Now we can stuff *model_motion_name* back into *rs274*:
-        rs274.motion_command_name = motion_command_name
+                # There are two candidates for the *motion_token* we need to compute.
+                # The most obvious is *previous_motion_command_name*.  The less obvious
+                # one occurs when a G88 (Cancel Canned Cycle) is encountered.  In that
+                # cas we absolutely do not want to do any more of *previous_motion_command_name*,
+                # but instead want to to a G0 rapid command instead.
+
+                # The first step is to figur out if we *have_g80*:
+                have_g80: bool = False
+                token: Token
+                for token in tokens:
+                    if isinstance(token, LetterToken):
+                        if token.letter == 'G' and token.number == 80:
+                            have_g80 = True
+                            break
+                if tracing is not None:
+                    print(f"{tracing}have_g80={have_g80} "
+                          f"previous_motion_command_name='{previous_motion_command_name}'")
+
+                # If we *have_g80* or we have a *previous_motion_command_name*, we create a
+                # *motion_token* for a second attempt at parsing *tokens*:
+                if have_g80 or previous_motion_command_name:
+                    # Create the appropriate *motion_token* to append to *tokens* and prior to
+                    # attempting to reparse *tokens*.  The G80->G0 conversion take precedence
+                    # over the *previoous_motion_command_name*:
+                    motion_token: LetterToken
+                    if have_g80:
+                        motion_token = LetterToken(0, 'G', 0)
+                    else:
+                        # Tediously convert *previous_motion_command_name* into *motion_token*:
+                        assert len(previous_motion_command_name) >= 2
+                        letter: str = previous_motion_command_name[0]
+                        assert letter in "G"
+                        number_text: str = previous_motion_command_name[1:]
+                        number: Number = (float(number_text) if '.' in number_text
+                                          else int(number_text))
+                        motion_token = LetterToken(0, letter, number)
+
+                    # With *motion_token* appended to *tokens*, we can try to reparse *tokens*:
+                    tokens.append(motion_token)
+                    commands2: List[Command]
+                    errors2: List[Error]
+                    unused_tokens2: List[LetterToken]
+                    motion_command_name2: str
+                    commands2, errors2, unused_tokens2, motion_command_name2 = \
+                        rs274.commands_from_tokens(tokens, tracing=next_tracing)
+                    if tracing is not None:
+                        print(f"{tracing}modified tokens={RS274.tokens_to_text(tokens)}")
+                        print(f"{tracing}commands2={RS274.commands_to_text(commands2)}")
+                        print(f"{tracing}unused_tokens2={RS274.tokens_to_text(unused_tokens2)}")
+                        print(f"{tracing}motion_command_name2='{motion_command_name2}'")
+
+                    # If there are no errors and no unused tokens, we have *succeeded*:
+                    if not errors2 and not unused_tokens2:
+                        # If the G80 caused us to add a G0 to *tokens*, we need to
+                        # adjust the resulting commands list so that the G80 occurs *before*
+                        # the G0 command:
+                        succeeded = True
+                        if have_g80:
+                            # Sweep through *commands2* finding the *g80_index* and the *g0_index*:
+                            g0_index: int = -1
+                            g80_index: int = -1
+                            index: int
+                            command: Command
+                            for index, command in enumerate(commands2):
+                                command_name: str = command.Name
+                                if command_name == "G0":
+                                    g0_index = index
+                                elif command_name == "G80":
+                                    g80_index = index
+                            assert g0_index >= 0 and g80_index >= 0
+
+                            # Now move *g80_command* to be in front of *g0_command* in *commands2*:
+                            if g80_index > g0_index:
+                                g80_command: Command = commands2[g80_index]
+                                del commands2[g80_index]
+                                commands2.insert(g0_index, g80_command)
+
+                        # We have succeeded by adding *motion_command_name* to *tokens*:
+                        final_commands = commands2
+                        final_errors = errors2
+                        assert motion_command_name2
+                        final_motion_command_name = motion_command_name2
+                        result_message = "Second parse attempt succeeded"
+
+            # We we have not *succeeded*, we return the results from the first parse attempt,
+            # with an additional error message:
+            if not succeeded:
+                # Append the *unused_tokens_error* to *errors1*:
+                if len(unused_tokens1) >= 1:
+                    unused_tokens_text: str = RS274.tokens_to_text(unused_tokens1)
+                    unused_tokens_error: Error = f"'{unused_tokens_text}' is/are unused"
+                    errors1.append(unused_tokens_error)
+                final_commands = commands1
+                final_errors = errors1
+                final_motion_command_name = (motion_command_name1 if motion_command_name1
+                                             else previous_motion_command_name)
+                result_message = "Neither parse attempt succeeded"
+
+        # Now we can stuff *final_model_motion_name* back into *rs274*:
+        rs274.motion_command_name = final_motion_command_name
         if tracing is not None:
-            print(f"{tracing}after: motion_command_name='{motion_command_name}'")
+            print(f"{tracing}after: final_motion_command_name='{final_motion_command_name}'")
+            print(f"{tracing}{result_message}")
 
         # Wrap up any requested *tracing* and return *final_commands*:
         if tracing is not None:
             final_commands_text = RS274.commands_to_text(final_commands)
-            print(f"{tracing}<=RS274.line_parse('{line}', *)=>{final_commands_text}")
-        return final_commands, errors
+            print(f"{tracing}<=RS274.line_parse('{line}', *)=>{final_commands_text},{final_errors}")
+        return final_commands, final_errors
 
     # RS274:line_tokenize():
     def line_tokenize(self, line: str) -> "Tuple[List[Token], List[Error]]":
@@ -2236,7 +2331,7 @@ if __name__ == "__main__":
         print("file_name='{0}'".format(file_name))
         with open(file_name, "r") as in_file:
             content: str = in_file.read()
-            commands: List[Command] = RS274.content_parse(content)
+            commands: List[Command] = RS274.content_parse(content, trace=False)
             commands = RS274.n_remove(commands)
             commands = RS274.g28_remove(commands)
             commands = RS274.g91_remove(commands)
