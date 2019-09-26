@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 """RS274 implements an RS274 parser for CNC pre/post-processors."""
 # <---------------------------------------- 100 characters --------------------------------------> #
-
-import sys
-import math
-import os
-
-# Import some types for type hints:
-from typing import Callable, Dict, List, Optional, Tuple, Union
-Number = Union[float, int]
-Error = str
-
-
 # FreeCad Path documentation:
 # https://www.freecadweb.org/wiki/Path_scripting
 
@@ -35,6 +24,52 @@ Error = str
 #      learn-how-to-use-static-type-checking-in-python-3-6-in-10-minutes-12c86d72677b
 # * http://google.github.io/styleguide/pyguide.html
 # * https://realpython.com/python-virtual-environments-a-primer/
+
+import argparse
+import math
+import os
+from io import IOBase
+
+# Import some types for type hints:
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+Number = Union[float, int]
+Error = str
+
+
+def main():
+    """Command line program for processing CNC files in rs274 format."""
+    # Set up a command line *parser*;
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description="RS274 post processor.")
+
+    parser.add_argument("cnc_files", metavar=".cnc", type=str, nargs="+",
+                        help="A .cnc file to process.")
+    parser.add_argument("-v", "--verbose", action="count",
+                        help="Increase tracing level (defaults to 0 which is off)")
+    parsed_arguments: Dict[str, Any] = vars(parser.parse_args())
+
+    # Create and initialize *rs274*:
+    rs274: RS274 = RS274()
+    rs274.groups_create()
+    rs274.token_match_tests()
+
+    # Process the *cnc_file_names*:
+    verbose_count: int = parsed_arguments["verbose"]
+    cnc_file_names = parsed_arguments["cnc_files"]
+    for index, cnc_file_name in enumerate(cnc_file_names):
+        print(f"[index]'{cnc_file_name}'")
+        cnc_file: IOBase
+        with open(cnc_file_name, "r") as cnc_file:
+            content: str = cnc_file.read()
+            commands: List[Command] = rs274.content_parse(content, trace=bool(verbose_count))
+            commands = RS274.n_remove(commands)
+            commands = RS274.g28_remove(commands)
+            commands = RS274.g91_remove(commands)
+            commands = RS274.drill_cycles_replace(commands)
+            rs274.commands_write(commands, os.path.join("/tmp", cnc_file_name))
+            # commands = rs274.g83.replace(commands)
+            # for command_index, command in enumerate(commands):
+            #        print(" Commandx[{0}]: {1}".format(command_index, command))
+
 
 # Command:
 class Command:
@@ -361,7 +396,7 @@ class RS274:
         # Flag when two or more *commands* are in the same group:
         conflict_errors: List[str]
         motion_command_name: str
-        conflict_errors, motion_command_name = RS274.group_conflicts_detect(commands)
+        conflict_errors, motion_command_name = rs274.group_conflicts_detect(commands)
         errors.extend(conflict_errors)
 
         # Determine which *commands* want to use which *unused_tokens* using *unused_tokens_table*
@@ -370,7 +405,7 @@ class RS274:
         bind_errors: List[Error]
         unused_letter_tokens: List[LetterToken]
         letter_commands_table: Dict[str, List[Command]] = (
-          RS274.letter_commands_table_create(unused_tokens_table, commands, tracing=next_tracing))
+          rs274.letter_commands_table_create(unused_tokens_table, commands, tracing=next_tracing))
         unused_letter_tokens, bind_errors = RS274.tokens_bind_to_commands(letter_commands_table,
                                                                           unused_tokens_table,
                                                                           tracing=next_tracing)
@@ -398,8 +433,7 @@ class RS274:
         return commands, errors, unused_letter_tokens, motion_command_name
 
     # RS274.content_parse():
-    @staticmethod
-    def content_parse(content: str,
+    def content_parse(self, content: str,
                       tracing: Optional[str] = None, trace: bool = False) -> List[Command]:
         """Parse an RS274 content and return resulting Command's.
 
@@ -420,6 +454,7 @@ class RS274:
 
         # Split *content* into *blocks* (i.e. lines) and parse them into *commands* that
         # are appended to *command_list*:
+        rs274: RS274 = self
         lines: List[str] = content.split('\n')
         command: Command
         commands_list: List[List[Command]] = list()
@@ -693,8 +728,7 @@ class RS274:
                 for command in commands]
 
     # RS274.group_conflicts_detect()
-    @staticmethod
-    def group_conflicts_detect(commands: List[Command]) -> Tuple[List[Error], str]:
+    def group_conflicts_detect(self, commands: List[Command]) -> Tuple[List[Error], str]:
         """Detect group conflicts in a list of Command's.
 
         Arguments:
@@ -706,6 +740,7 @@ class RS274:
 
         """
         # Grab some values from *rs274* (i.e. *self*):
+        rs274: RS274 = self
         motion_group: Optional[Group] = rs274.motion_group
         groups_table: Dict[str, Group] = rs274.groups_table
 
@@ -1010,8 +1045,7 @@ class RS274:
             print(f"[{index}]:{group.short_name}({template_text})")
 
     # RS274.letter_commands_table_create():
-    @staticmethod
-    def letter_commands_table_create(unused_tokens_table: "Dict[str, LetterToken]",
+    def letter_commands_table_create(self, unused_tokens_table: "Dict[str, LetterToken]",
                                      commands: List[Command],
                                      tracing: Optional[str] = None) -> Dict[str, List[Command]]:
         """Return a table used for token to command binding.
@@ -1038,6 +1072,7 @@ class RS274:
                   f"{unused_tokens_text}, {commands_text})")
 
         # Start filling up *letter_template_table*:
+        rs274: RS274 = self
         letter_commands_table: Dict[str, List[Command]] = dict()
         templates_table: Dict[str, Template] = rs274.templates_table
         letter_index: int
@@ -2317,27 +2352,4 @@ class OLetterToken(Token):
 
 # Run this code from the command line:
 if __name__ == "__main__":
-    # Create and initialize *rs274*:
-    rs274: RS274 = RS274()
-    rs274.groups_create()
-    rs274.token_match_tests()
-
-    # Extract *file_names* from the command line arguments:
-    file_names: List[str] = sys.argv[1:]
-
-    # Process each *file_name* in *file_names*:
-    file_name: str
-    for file_name in file_names:
-        print("file_name='{0}'".format(file_name))
-        with open(file_name, "r") as in_file:
-            content: str = in_file.read()
-            commands: List[Command] = RS274.content_parse(content, trace=False)
-            commands = RS274.n_remove(commands)
-            commands = RS274.g28_remove(commands)
-            commands = RS274.g91_remove(commands)
-            commands = RS274.drill_cycles_replace(commands)
-            rs274.commands_write(commands, os.path.join("/tmp", file_name))
-            # commands = rs274.g83.replace(commands)
-            # for command_index, command in enumerate(commands):
-            #        print(" Commandx[{0}]: {1}".format(command_index, command))
-        print("")
+    main()
